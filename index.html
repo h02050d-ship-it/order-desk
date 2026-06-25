@@ -593,7 +593,7 @@ function orderCard(o){
       ${opts.length?'<span class="pill opt">⚙ '+esc(opts.join("・"))+'</span>':'<span class="pill opt-none">オプションなし</span>'}
       ${o.hasMsg?'<span class="pill msg">💬 問い合わせ</span>':''}
       ${o.memo?'<span class="pill memo">📝 メモ</span>':''}
-      ${o.tracking?'<span class="pill memo">🚚 '+esc(o.tracking.split(" ")[0])+'</span>':''}
+      ${o.tracking?'<span class="pill memo">🚚 '+esc(String(o.tracking).split(" ")[0])+'</span>':''}
     </div>
     ${next?`<button class="nextbtn" data-next="${o.id}">${O_NEXT_LABEL[o.status]}</button>`:''}
   `;
