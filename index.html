@@ -652,6 +652,22 @@ function openOrderDrawer(id){
   const m=MALL[o.mall];
   $("#d-head").innerHTML=`<span class="badge ${m.cls}">${m.label}</span><h3>${orderName(o)}</h3><button class="d-close" onclick="closeDrawer()">✕</button>`;
   const rows = o.items.map(i=>`<tr><td title="${esc(i.name)}">${itemHTML(i.name,0)}</td><td class="num">×${i.qty}</td><td class="num">${yen(i.price*i.qty)}</td></tr>`).join("");
+  // 楽天書き戻し用
+  const _d=new Date(); const today=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,"0")}-${String(_d.getDate()).padStart(2,"0")}`;
+  const trackNum=String(o.tracking||"").replace(/^[^\d]*/,"").trim();
+  const carName={"1004":"西濃運輸","1002":"佐川急便","1003":"日本郵便","1001":"ヤマト運輸","1000":"その他"};
+  let defCar="1004"; Object.keys(carName).forEach(c=>{ if(String(o.tracking||"").includes(carName[c])) defCar=c; });
+  const carOpts=Object.keys(carName).map(c=>`<option value="${c}" ${c===defCar?"selected":""}>${carName[c]}</option>`).join("");
+  const rkWriteback = o.mall!=="rakuten" ? "" : `
+    <div class="sec-t">楽天への書き戻し（API）</div>
+    ${o.status==="new"?`<button class="btn ghost sm" onclick="rakutenConfirmFromDrawer()" style="margin-bottom:10px">🟢 楽天で受注確定する</button>`:""}
+    <div style="display:flex;gap:8px">
+      <select class="sel" id="rk-carrier" style="flex:0 0 132px">${carOpts}</select>
+      <input class="txt" id="rk-track" placeholder="送り状番号" value="${esc(trackNum)}" style="flex:1" />
+    </div>
+    <input class="txt" id="rk-date" type="date" value="${today}" style="margin-top:8px" />
+    <button class="btn primary" onclick="rakutenShipFromDrawer()" style="width:100%;margin-top:8px">🚚 楽天に発送処理を送信</button>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px">※送信すると楽天からお客様へ「発送完了メール」が自動送信され、注文が「発送済」になります。</div>`;
   $("#d-body").innerHTML=`
     <div class="kv">
       <span class="k">注文番号</span><span class="v">${esc(o.orderNo)}</span>
@@ -671,7 +687,7 @@ function openOrderDrawer(id){
     <input class="txt" id="o-track" placeholder="例：西濃 1234-5678-9012" value="${esc(o.tracking)}" />
     <label class="fld">メモ（社内用）</label>
     <textarea class="txt" id="o-memo" style="min-height:70px" placeholder="領収書の宛名、特記事項など">${esc(o.memo)}</textarea>
-
+    ${rkWriteback}
     ${o.hasMsg?`<div class="sec-t">関連</div><button class="btn ghost sm" onclick="jumpToInquiryByOrder('${o.id}')">💬 このお客様の問い合わせを開く</button>`:""}
   `;
   $("#d-foot").innerHTML=`
@@ -692,6 +708,34 @@ function saveOrderFromDrawer(){
   o.customer = $("#o-cust").value.trim();
   saveOrderOverlay(o);
   closeDrawer(); render(); toast("保存しました");
+}
+
+/* ---- 楽天 書き戻し（受注確定・発送処理） ---- */
+async function apiCall(body){
+  const res = await fetch(API_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body:JSON.stringify(Object.assign({email:CRED.email, pass:CRED.pass}, body))});
+  return await res.json();
+}
+function rkMsg(r){ return (r.messages&&r.messages.map(m=>m.message).filter(Boolean).join(" / ")) || r.error || ("HTTP"+(r.code||"?")); }
+async function rakutenConfirmFromDrawer(){
+  const o=getOrder(state.drawer.id); if(!o) return;
+  if(!confirm("楽天でこの注文を「受注確定」します。よろしいですか？")) return;
+  toast("楽天へ送信中…");
+  try{ const r=await apiCall({action:"rakutenConfirm", id:o.id, orderNo:o.orderNo});
+    if(r.ok){ toast("楽天で受注確定しました"); closeDrawer(); loadFromServer(); }
+    else toast("失敗: "+rkMsg(r)); }
+  catch(e){ toast("通信エラー"); }
+}
+async function rakutenShipFromDrawer(){
+  const o=getOrder(state.drawer.id); if(!o) return;
+  const carrier=$("#rk-carrier").value, tn=$("#rk-track").value.trim(), date=$("#rk-date").value;
+  if(!tn){ toast("送り状番号を入力してください"); return; }
+  if(!confirm("楽天に発送処理を送信します。\n\n・お客様へ「発送完了メール」が自動送信されます\n・注文が「発送済」になります\n\nよろしいですか？")) return;
+  toast("楽天へ送信中…");
+  try{ const r=await apiCall({action:"rakutenShip", id:o.id, orderNo:o.orderNo, carrierCode:carrier, trackingNumber:tn, shippingDate:date});
+    if(r.ok){ toast("楽天に発送処理を送信しました"); closeDrawer(); loadFromServer(); }
+    else toast("失敗: "+rkMsg(r)); }
+  catch(e){ toast("通信エラー"); }
 }
 function jumpToInquiryByOrder(oid){
   const o=getOrder(oid);
@@ -968,7 +1012,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
 });
 // expose for inline onclick
-Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout});
+Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer});
 </script>
 </body>
 </html>
