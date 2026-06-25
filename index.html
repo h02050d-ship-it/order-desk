@@ -113,6 +113,8 @@
   .pill.kakou-ok{background:#e7f6ef; color:#177a59; border-color:#bce6d3; font-weight:800}
   .pill.pay-wait{background:#fdecec; color:#c0392b; border-color:#f5c6c2; font-weight:800}
   .pill.ship-wait{background:#fff4e5; color:#a06a14; border-color:#f3d9a8; font-weight:800}
+  .pill.mail-wait{background:#fff0f0; color:#b3261e; border-color:#f3c2bd; font-weight:800}
+  [data-theme="dark"] .pill.mail-wait{background:#3a2422;color:#ff9b91;border-color:#5a3330}
   [data-theme="dark"] .pill.kakou-ok{background:#1f3a30;color:#7fe0b8;border-color:#34492f}
   [data-theme="dark"] .pill.pay-wait{background:#3a2422;color:#ff9b91;border-color:#5a3330}
   [data-theme="dark"] .pill.ship-wait{background:#332a18;color:#e3b65f;border-color:#5a4a26}
@@ -627,6 +629,7 @@ function orderCard(o){
       <span class="date">${esc(o.date.slice(5))}</span>
     </div>
     <div class="flagrow">
+      ${(o.mall==="rakuten"&&o.status!=="done"&&!o.mailSent&&!kakouReady(o))?'<span class="pill mail-wait">📧 メール未送信</span>':''}
       ${(o.status!=="done")?(kakouReady(o)?'<span class="pill kakou-ok">✅ 加工OK</span>':(((o.mall==="rakuten"&&!o.paid)?'<span class="pill pay-wait">💰 支払確認</span>':'')+(!o.shipConfirmed?'<span class="pill ship-wait">🚚 配送確認</span>':''))):""}
       ${o.custType?'<span class="pill cust-'+(o.custType==="法人"?"corp":"indiv")+'">'+(o.custType==="法人"?"🏢":"🏠")+' '+esc(o.custType)+'</span>':''}
       ${o.deliveryDate?'<span class="pill date-spec">⏰ '+esc(o.deliveryDate)+' 着指定</span>':''}
@@ -727,6 +730,7 @@ function openOrderDrawer(id){
     <div class="sec-t">加工の準備</div>
     <div class="prep-box ${kakouReady(o)?'ok':''}">
       <div class="prep-line"><span>💰 支払</span><span class="${isPaidOk(o)?'done':'wait'}">${isPaidOk(o)?'✅ 確認済'+(o.mall!=='rakuten'?'（ヤフーは手動把握）':''):'⏳ 入金待ち（API把握）'}</span></div>
+      ${o.mall==="rakuten"?`<label class="prep-check"><input type="checkbox" id="o-mailsent" ${o.mailSent?'checked':''} onchange="toggleMailSent()"> 📧 配送確認メール送信済み（送料・お届けの案内メールを送った）</label>`:""}
       <label class="prep-check"><input type="checkbox" id="o-shipconf" ${o.shipConfirmed?'checked':''} onchange="toggleShipConfirm()"> 🚚 配送確認済み（送料・営業所・お届け方法をお客様と確認した）</label>
       <div class="prep-result">${kakouReady(o)?'✅ <b>加工OK</b>（支払・配送とも確認済 → 加工して良い合図）':'⏳ 支払と配送確認が揃うと「加工OK」になります'}</div>
     </div>
@@ -778,6 +782,13 @@ function toggleShipConfirm(){
   if(API_URL) apiPost({action:"order", id:o.id, shipConfirmed:o.shipConfirmed});
   render(); openOrderDrawer(o.id);
   toast(o.shipConfirmed?"配送確認済みにしました":"配送確認を外しました");
+}
+function toggleMailSent(){
+  const o=getOrder(state.drawer.id); if(!o) return;
+  o.mailSent=$("#o-mailsent").checked;
+  if(API_URL) apiPost({action:"order", id:o.id, mailSent:o.mailSent});
+  render(); openOrderDrawer(o.id);
+  toast(o.mailSent?"配送確認メール送信済みにしました":"未送信に戻しました");
 }
 async function rakutenConfirmFromDrawer(){
   const o=getOrder(state.drawer.id); if(!o) return;
@@ -1075,7 +1086,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
 });
 // expose for inline onclick
-Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,toggleShipConfirm});
+Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,toggleShipConfirm,toggleMailSent});
 </script>
 </body>
 </html>
