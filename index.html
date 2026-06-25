@@ -106,6 +106,10 @@
   .pill.memo{background:var(--panel2); color:var(--muted)}
   .pill.opt{background:#f3e8ff; color:#7b1fa2; border-color:#e3cdf5; font-weight:800}
   .pill.opt-none{background:transparent; color:var(--muted); border-color:var(--line2)}
+  .pill.prog{background:#eef4ff; color:#2f6fed; border-color:#cfe0ff; font-weight:700}
+  [data-theme="dark"] .pill.prog{background:#1f2a3f;color:#9cc0ff;border-color:#2f415f}
+  .rk-warn{background:#fff4e5; color:#8a5a12; border:1px solid #f3d9a8; border-radius:10px; padding:9px 11px; font-size:12px; line-height:1.5; margin-bottom:10px}
+  [data-theme="dark"] .rk-warn{background:#332a18;color:#e3b65f;border-color:#5a4a26}
   [data-theme="dark"] .pill.opt{background:#2e2140;color:#d4a8f5;border-color:#46315e}
   [data-theme="dark"] .pill.warn{background:#3a2422;color:#ff9b91;border-color:#5a3330}
   [data-theme="dark"] .pill.msg{background:#1f2a3f;color:#9cc0ff;border-color:#2f415f}
@@ -506,6 +510,11 @@ function itemHTML(name, qty){
 }
 function itemsSummaryHTML(items){ return (items||[]).map(i=>itemHTML(i.name,i.qty)).join('<span class="i-sep">／</span>'); }
 function orderName(o){ return o.customer ? esc(o.customer)+" 様" : "＃"+esc(String(o.orderNo||"").split("-").pop()); }
+// 楽天の進捗ラベル・2m以上(運賃見積り要)判定
+const RK_PROGRESS_LABEL={100:"注文確認待ち",200:"楽天処理中",300:"発送待ち",400:"変更確定待ち",500:"発送済",600:"入金待ち",700:"入金済"};
+function itemMaxLen(o){ let mx=0; (o.items||[]).forEach(i=>{ const d=parseItem(i.name).dim; if(d){ const p=d.split("×"); const L=Number(p[p.length-1])||0; if(L>mx) mx=L; } }); return mx; }
+function needsFreight(o){ return o.mall==="rakuten" && itemMaxLen(o)>=2000; } // 2m以上＝運賃見積り
+function rkProgressLabel(o){ if(o.mall!=="rakuten") return ""; return RK_PROGRESS_LABEL[o.progress] || "注文確認待ち"; }
 function getOrder(id){ return state.orders.find(o=>o.id===id); }
 function getInq(id){ return state.inquiries.find(q=>q.id===id); }
 function now(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
@@ -590,12 +599,14 @@ function orderCard(o){
       <span class="date">${esc(o.date.slice(5))}</span>
     </div>
     <div class="flagrow">
+      ${(o.mall==="rakuten"&&o.status==="new")?'<span class="pill prog">'+esc(rkProgressLabel(o))+'</span>':''}
+      ${(needsFreight(o)&&o.status==="new")?'<span class="pill warn">🚚 運賃見積り(2m〜)</span>':''}
       ${opts.length?'<span class="pill opt">⚙ '+esc(opts.join("・"))+'</span>':'<span class="pill opt-none">オプションなし</span>'}
       ${o.hasMsg?'<span class="pill msg">💬 問い合わせ</span>':''}
       ${o.memo?'<span class="pill memo">📝 メモ</span>':''}
       ${o.tracking?'<span class="pill memo">🚚 '+esc(String(o.tracking).split(" ")[0])+'</span>':''}
     </div>
-    ${next?`<button class="nextbtn" data-next="${o.id}">${O_NEXT_LABEL[o.status]}</button>`:''}
+    ${(next && o.mall!=="rakuten")?`<button class="nextbtn" data-next="${o.id}">${O_NEXT_LABEL[o.status]}</button>`:''}
   `;
   el.addEventListener("click",e=>{
     if(e.target.closest("[data-next]")){ e.stopPropagation(); advanceOrder(o.id); return; }
@@ -660,6 +671,7 @@ function openOrderDrawer(id){
   const carOpts=Object.keys(carName).map(c=>`<option value="${c}" ${c===defCar?"selected":""}>${carName[c]}</option>`).join("");
   const rkWriteback = o.mall!=="rakuten" ? "" : `
     <div class="sec-t">楽天への書き戻し（API）</div>
+    ${needsFreight(o)?`<div class="rk-warn">⚠️ <b>2m以上の商品</b>です。<b>運賃見積り→お客様へメール→了承メール→楽天で送料追加</b>が済んでから受注確定してください（1m・佐川は送料自動なのでそのまま確定OK）。</div>`:""}
     ${o.status==="new"?`<button class="btn ghost sm" onclick="rakutenConfirmFromDrawer()" style="margin-bottom:10px">🟢 楽天で受注確定する</button>`:""}
     <div style="display:flex;gap:8px">
       <select class="sel" id="rk-carrier" style="flex:0 0 132px">${carOpts}</select>
@@ -719,7 +731,8 @@ async function apiCall(body){
 function rkMsg(r){ return (r.messages&&r.messages.map(m=>m.message).filter(Boolean).join(" / ")) || r.error || ("HTTP"+(r.code||"?")); }
 async function rakutenConfirmFromDrawer(){
   const o=getOrder(state.drawer.id); if(!o) return;
-  if(!confirm("楽天でこの注文を「受注確定」します。よろしいですか？")) return;
+  const warn = needsFreight(o) ? "⚠️ 2m以上の商品です。\n運賃見積り→お客様了承→楽天で送料追加 は完了していますか？\n（未完了なら先に楽天R-Backofficeで送料を追加してください）\n\n" : "";
+  if(!confirm(warn+"楽天でこの注文を「受注確定」します。よろしいですか？")) return;
   toast("楽天へ送信中…");
   try{ const r=await apiCall({action:"rakutenConfirm", id:o.id, orderNo:o.orderNo});
     if(r.ok){ toast("楽天で受注確定しました"); closeDrawer(); loadFromServer(); }
