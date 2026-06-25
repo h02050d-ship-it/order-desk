@@ -81,7 +81,15 @@
   .badge.rakuten{background:var(--rakuten)} .badge.yahoo{background:var(--yahoo)}
   .card .ono{font-size:11px; color:var(--muted); font-weight:600; margin-left:auto}
   .card .cust{font-size:14px; font-weight:700; margin-bottom:2px}
-  .card .items{font-size:12px; color:var(--muted); line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+  .card .items{font-size:12px; color:var(--muted); line-height:1.5; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden}
+  .i-head{color:var(--ink); opacity:.82}
+  .i-dim{color:var(--ink); font-weight:700}
+  .i-qty{color:var(--muted)}
+  .i-fushi{font-weight:800}
+  .i-grade{color:#c62828; font-weight:800}
+  .i-mult{color:var(--brand); font-weight:800}
+  .i-sep{color:var(--line); margin:0 3px}
+  table.items-t .i-head{opacity:1}
   .card .foot{display:flex; align-items:center; gap:8px; margin-top:8px}
   .card .price{font-size:14px; font-weight:800}
   .card .date{font-size:11px; color:var(--muted); margin-left:auto}
@@ -436,20 +444,40 @@ function saveInqOverlay(q){
 const $ = s=>document.querySelector(s);
 const yen = n=>"¥"+Number(n||0).toLocaleString("ja-JP");
 const esc = s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-// 長い商品タイトルを「等級 樹種種類 寸法 入数 節」に整理（解析できなければ原文）
-function cleanItem(name){
+// 節（等級）の色＝加工予定表に準拠
+const GRADE_COLORS={"丸節":"#d32f2f","小節":"#ef6c00","上小節":"#2e7d32","特上小節":"#2e7d32","特上小":"#2e7d32","無節特上":"#6a1b9a","無節":"#1565c0","節無":"#1565c0","生節":"#795548","節有":"#795548"};
+function gradeColor(f){ return GRADE_COLORS[f]||"#6a5a44"; }
+// 商品タイトルを構造化（A級は標準なので等級ラベルは付けない＝B/Cのみ表示）
+function parseItem(name){
   const s=String(name||"").replace(/[　]/g," ").replace(/\s+/g," ").trim();
   const grade=(s.match(/([A-C])\s*級/)||[])[1]||"";
   const wood=/杉|すぎ|スギ/.test(s)?"杉":(/桧|檜|ひのき|ヒノキ/.test(s)?"桧":"");
   const type=(s.match(/フローリング|羽目板|野地板|スノコ板?|破風板?|笠木|框|無垢板/)||[])[0]||"";
   const dim=(s.match(/\d{1,3}\s*[×x]\s*\d{1,3}\s*[×x]\s*\d{3,4}/)||[""])[0].replace(/\s/g,"").replace(/x/gi,"×");
   let qty=""; const qm=s.match(/【\s*(\d+)\s*枚/)||s.match(/(\d+)\s*枚入/); if(qm) qty=qm[1]+"枚入";
-  const fushi=(s.match(/特上小節|上小節|小節|丸節|無節|節有|節無/)||[])[0]||"";
-  const head=((grade?grade+"級 ":"")+(wood+type)).trim();
-  const parts=[head,dim,qty,fushi].filter(Boolean);
-  return parts.length>=2 ? parts.join(" ") : s; // ほぼ解析できた時だけ整形
+  const fushi=(s.match(/特上小節|上小節|小節|丸節|無節特上|無節|節有|節無/)||[])[0]||"";
+  return {grade,wood,type,dim,qty,fushi,raw:s};
 }
-function itemsSummary(items){ return (items||[]).map(i=>`${cleanItem(i.name)}${i.qty>1?" ×"+i.qty:""}`).join("、"); }
+function cleanItem(name){ // プレーンテキスト（tooltip等）
+  const p=parseItem(name);
+  const head=((p.grade&&p.grade!=="A"?p.grade+"級 ":"")+(p.wood+p.type)).trim();
+  const parts=[head,p.dim,p.qty,p.fushi].filter(Boolean);
+  return parts.length>=2 ? parts.join(" ") : p.raw;
+}
+// 色付きHTML。qty>1なら ×n を付与。樹種種類は控えめ、寸法は太字、節は色分け、B/C級は赤で強調
+function itemHTML(name, qty){
+  const p=parseItem(name);
+  if(!p.wood && !p.type && !p.dim) return esc(name);
+  let h="";
+  if(p.grade && p.grade!=="A") h+=`<b class="i-grade">${esc(p.grade)}級</b> `;
+  h+=`<span class="i-head">${esc(p.wood+p.type)}</span>`;
+  if(p.dim) h+=` <span class="i-dim">${esc(p.dim)}</span>`;
+  if(p.qty) h+=` <span class="i-qty">${esc(p.qty)}</span>`;
+  if(p.fushi) h+=` <span class="i-fushi" style="color:${gradeColor(p.fushi)}">${esc(p.fushi)}</span>`;
+  if(qty>1) h+=` <span class="i-mult">×${qty}</span>`;
+  return h;
+}
+function itemsSummaryHTML(items){ return (items||[]).map(i=>itemHTML(i.name,i.qty)).join('<span class="i-sep">／</span>'); }
 function orderName(o){ return o.customer ? esc(o.customer)+" 様" : "＃"+esc(String(o.orderNo||"").split("-").pop()); }
 function getOrder(id){ return state.orders.find(o=>o.id===id); }
 function getInq(id){ return state.inquiries.find(q=>q.id===id); }
@@ -459,7 +487,7 @@ function matchFilter(o){
   if(state.mall!=="all" && o.mall!==state.mall) return false;
   const s = state.search.trim().toLowerCase();
   if(!s) return true;
-  const hay = [o.orderNo, o.customer, o.subject, (o.items?itemsSummary(o.items):"")].join(" ").toLowerCase();
+  const hay = [o.orderNo, o.customer, o.subject, (o.items?o.items.map(i=>i.name).join(" "):"")].join(" ").toLowerCase();
   return hay.includes(s);
 }
 
@@ -528,7 +556,7 @@ function orderCard(o){
       <span class="ono">${esc(o.orderNo)}</span>
     </div>
     <div class="cust">${orderName(o)}</div>
-    <div class="items">${esc(itemsSummary(o.items))}</div>
+    <div class="items">${itemsSummaryHTML(o.items)}</div>
     <div class="foot">
       <span class="price">${yen(o.total)}</span>
       <span class="date">${esc(o.date.slice(5))}</span>
@@ -594,7 +622,7 @@ function openOrderDrawer(id){
   const o=getOrder(id); if(!o) return; state.drawer={type:"order", id};
   const m=MALL[o.mall];
   $("#d-head").innerHTML=`<span class="badge ${m.cls}">${m.label}</span><h3>${orderName(o)}</h3><button class="d-close" onclick="closeDrawer()">✕</button>`;
-  const rows = o.items.map(i=>`<tr><td title="${esc(i.name)}">${esc(cleanItem(i.name))}</td><td class="num">×${i.qty}</td><td class="num">${yen(i.price*i.qty)}</td></tr>`).join("");
+  const rows = o.items.map(i=>`<tr><td title="${esc(i.name)}">${itemHTML(i.name,0)}</td><td class="num">×${i.qty}</td><td class="num">${yen(i.price*i.qty)}</td></tr>`).join("");
   $("#d-body").innerHTML=`
     <div class="kv">
       <span class="k">注文番号</span><span class="v">${esc(o.orderNo)}</span>
