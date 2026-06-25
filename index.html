@@ -106,6 +106,10 @@
   .pill.memo{background:var(--panel2); color:var(--muted)}
   .pill.opt{background:#f3e8ff; color:#7b1fa2; border-color:#e3cdf5; font-weight:800}
   .pill.opt-none{background:transparent; color:var(--muted); border-color:var(--line2)}
+  .pill.cust-corp{background:#e8eefb; color:#1f4fb5; border-color:#c6d6f5; font-weight:800}
+  .pill.cust-indiv{background:#eef6ee; color:#2e7d32; border-color:#cfe6cf; font-weight:800}
+  [data-theme="dark"] .pill.cust-corp{background:#1c2740;color:#9db9f0;border-color:#2f415f}
+  [data-theme="dark"] .pill.cust-indiv{background:#1f2e1f;color:#9fd4a2;border-color:#34492f}
   .pill.prog{background:#eef4ff; color:#2f6fed; border-color:#cfe0ff; font-weight:700}
   [data-theme="dark"] .pill.prog{background:#1f2a3f;color:#9cc0ff;border-color:#2f415f}
   .pill.date-spec{background:#fdecec; color:#c0392b; border-color:#f5c6c2; font-weight:800}
@@ -604,6 +608,7 @@ function orderCard(o){
       <span class="date">${esc(o.date.slice(5))}</span>
     </div>
     <div class="flagrow">
+      ${o.custType?'<span class="pill cust-'+(o.custType==="法人"?"corp":"indiv")+'">'+(o.custType==="法人"?"🏢":"🏠")+' '+esc(o.custType)+'</span>':''}
       ${o.deliveryDate?'<span class="pill date-spec">⏰ '+esc(o.deliveryDate)+' 着指定</span>':''}
       ${(o.mall==="rakuten"&&o.status==="new")?'<span class="pill prog">'+esc(rkProgressLabel(o))+'</span>':''}
       ${(needsFreight(o)&&o.status==="new")?'<span class="pill warn">🚚 運賃見積り(2m〜)</span>':''}
@@ -693,6 +698,7 @@ function openOrderDrawer(id){
       <span class="k">注文番号</span><span class="v">${esc(o.orderNo)}</span>
       <span class="k">受注日時</span><span class="v">${esc(o.date)}</span>
       ${o.deliveryDate?`<span class="k">お届け日指定</span><span class="v" style="color:#c0392b;font-weight:800">⏰ ${esc(o.deliveryDate)}</span>`:""}
+      ${o.custType?`<span class="k">配送区分</span><span class="v">${o.custType==="法人"?"🏢 法人（宅配可）":"🏠 個人（最寄り支店止め）"}</span>`:""}
       ${o.deliveryMethod?`<span class="k">配送方法</span><span class="v">${esc(o.deliveryMethod)}</span>`:""}
     </div>
     ${o.remarks?`<div class="remarks-box"><b>📝 お客様備考</b>\n${esc(o.remarks)}</div>`:""}
