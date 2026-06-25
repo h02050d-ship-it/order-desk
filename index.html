@@ -96,7 +96,8 @@
   .card .foot{display:flex; align-items:center; gap:8px; margin-top:8px}
   .card .price{font-size:14px; font-weight:800}
   .card .date{font-size:11px; color:var(--muted); margin-left:auto}
-  .col .done-card{box-shadow:none; background:var(--panel2); border-color:var(--line2)}
+  .col .done-card{box-shadow:none; background:var(--panel2); border-color:var(--line2); opacity:.5}
+  .col .done-card:hover{opacity:.85}
   .col .done-card .nextbtn{display:none}
   .card .flagrow{display:flex; gap:6px; margin-top:7px; flex-wrap:wrap}
   .pill{font-size:10.5px; border-radius:20px; padding:2px 8px; font-weight:700; border:1px solid var(--line2)}
@@ -505,12 +506,6 @@ function itemHTML(name, qty){
 }
 function itemsSummaryHTML(items){ return (items||[]).map(i=>itemHTML(i.name,i.qty)).join('<span class="i-sep">／</span>'); }
 function orderName(o){ return o.customer ? esc(o.customer)+" 様" : "＃"+esc(String(o.orderNo||"").split("-").pop()); }
-// 該当注文のモール管理画面URL（ヤフー=注文別の直リンク／楽天=R-Backoffice受注管理トップ）
-function manageUrl(o){
-  const no=String(o.orderNo||"");
-  if(o.mall==="yahoo") return "https://pro.store.yahoo.co.jp/pro.hayazaimuku/order/manage/detail/"+encodeURIComponent(no);
-  return "https://order.rms.rakuten.co.jp/"; // 楽天は注文別の確実な直リンクが未確認のため受注管理トップ
-}
 function getOrder(id){ return state.orders.find(o=>o.id===id); }
 function getInq(id){ return state.inquiries.find(q=>q.id===id); }
 function now(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
@@ -567,9 +562,9 @@ function renderOrders(){
     const c=document.createElement("div"); c.className="col";
     c.innerHTML=`<div class="col-h"><span class="dot" style="background:${col.dot}"></span>${col.label}<span class="cnt">${cards.length}</span></div>`;
     if(!cards.length){ c.insertAdjacentHTML("beforeend",`<div class="col-empty">—</div>`); }
-    cards.forEach((o,idx)=>{
+    cards.forEach((o)=>{
       const el=orderCard(o);
-      if(col.k==="done"){ el.classList.add("done-card"); el.style.opacity=Math.max(0.32, 0.9-idx*0.05).toFixed(2); } // 上から順に薄く
+      if(col.k==="done") el.classList.add("done-card"); // 完了は一律で薄く（CSS）
       c.appendChild(el);
     });
     board.appendChild(c);
@@ -586,7 +581,7 @@ function orderCard(o){
   el.innerHTML=`
     <div class="top">
       <span class="badge ${m.cls}">${m.label}</span>
-      <a class="ono-link" href="${manageUrl(o)}" target="_blank" rel="noopener" data-jump title="${m.label}の管理画面を開く">${esc(o.orderNo)} ↗</a>
+      <span class="ono">${esc(o.orderNo)}</span>
     </div>
     <div class="cust">${orderName(o)}</div>
     <div class="items">${itemsSummaryHTML(o.items)}</div>
@@ -603,7 +598,6 @@ function orderCard(o){
     ${next?`<button class="nextbtn" data-next="${o.id}">${O_NEXT_LABEL[o.status]}</button>`:''}
   `;
   el.addEventListener("click",e=>{
-    if(e.target.closest("[data-jump]")) return; // 管理画面リンクはそのまま遷移（ドロワーを開かない）
     if(e.target.closest("[data-next]")){ e.stopPropagation(); advanceOrder(o.id); return; }
     openOrderDrawer(o.id);
   });
@@ -681,8 +675,8 @@ function openOrderDrawer(id){
     ${o.hasMsg?`<div class="sec-t">関連</div><button class="btn ghost sm" onclick="jumpToInquiryByOrder('${o.id}')">💬 このお客様の問い合わせを開く</button>`:""}
   `;
   $("#d-foot").innerHTML=`
-    <button class="btn ghost grow" onclick="window.open('${manageUrl(o)}','_blank')">${m.label}でこの注文を開く ↗</button>
-    <button class="btn primary" onclick="saveOrderFromDrawer()">保存</button>
+    <button class="btn ghost" onclick="closeDrawer()">閉じる</button>
+    <button class="btn primary grow" onclick="saveOrderFromDrawer()">保存</button>
   `;
   $("#o-status").querySelectorAll("button").forEach(b=>{
     b.onclick=()=>{ $("#o-status").querySelectorAll("button").forEach(x=>x.classList.remove("active")); b.classList.add("active"); };
