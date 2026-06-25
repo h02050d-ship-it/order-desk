@@ -110,6 +110,22 @@
   .pill.cust-indiv{background:#eef6ee; color:#2e7d32; border-color:#cfe6cf; font-weight:800}
   [data-theme="dark"] .pill.cust-corp{background:#1c2740;color:#9db9f0;border-color:#2f415f}
   [data-theme="dark"] .pill.cust-indiv{background:#1f2e1f;color:#9fd4a2;border-color:#34492f}
+  .pill.kakou-ok{background:#e7f6ef; color:#177a59; border-color:#bce6d3; font-weight:800}
+  .pill.pay-wait{background:#fdecec; color:#c0392b; border-color:#f5c6c2; font-weight:800}
+  .pill.ship-wait{background:#fff4e5; color:#a06a14; border-color:#f3d9a8; font-weight:800}
+  [data-theme="dark"] .pill.kakou-ok{background:#1f3a30;color:#7fe0b8;border-color:#34492f}
+  [data-theme="dark"] .pill.pay-wait{background:#3a2422;color:#ff9b91;border-color:#5a3330}
+  [data-theme="dark"] .pill.ship-wait{background:#332a18;color:#e3b65f;border-color:#5a4a26}
+  .prep-box{background:var(--panel2); border:1px solid var(--line); border-radius:11px; padding:11px 12px; margin:2px 0 4px}
+  .prep-box.ok{background:#eef9f3; border-color:#bce6d3}
+  [data-theme="dark"] .prep-box.ok{background:#1c3329;border-color:#34492f}
+  .prep-line{display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px}
+  .prep-line .done{color:#177a59; font-weight:700}
+  .prep-line .wait{color:#c0392b; font-weight:700}
+  .prep-check{display:flex; gap:8px; align-items:flex-start; font-size:13px; line-height:1.4; cursor:pointer}
+  .prep-check input{margin-top:2px; width:18px; height:18px; accent-color:var(--brand)}
+  .prep-result{margin-top:9px; font-size:12.5px; color:var(--muted); border-top:1px dashed var(--line); padding-top:8px}
+  .prep-box.ok .prep-result{color:#177a59}
   .pill.prog{background:#eef4ff; color:#2f6fed; border-color:#cfe0ff; font-weight:700}
   [data-theme="dark"] .pill.prog{background:#1f2a3f;color:#9cc0ff;border-color:#2f415f}
   .pill.date-spec{background:#fdecec; color:#c0392b; border-color:#f5c6c2; font-weight:800}
@@ -524,6 +540,9 @@ const RK_PROGRESS_LABEL={100:"注文確認待ち",200:"楽天処理中",300:"発
 function itemMaxLen(o){ let mx=0; (o.items||[]).forEach(i=>{ const d=parseItem(i.name).dim; if(d){ const p=d.split("×"); const L=Number(p[p.length-1])||0; if(L>mx) mx=L; } }); return mx; }
 function needsFreight(o){ return o.mall==="rakuten" && itemMaxLen(o)>=2000; } // 2m以上＝運賃見積り
 function rkProgressLabel(o){ if(o.mall!=="rakuten") return ""; return RK_PROGRESS_LABEL[o.progress] || "注文確認待ち"; }
+// 加工準備：支払確認(楽天=API/ヤフー=当面手動扱い)＋配送確認(手動チェック)が揃えば加工OK
+function isPaidOk(o){ return o.mall==="rakuten" ? !!o.paid : true; }
+function kakouReady(o){ return isPaidOk(o) && !!o.shipConfirmed; }
 function getOrder(id){ return state.orders.find(o=>o.id===id); }
 function getInq(id){ return state.inquiries.find(q=>q.id===id); }
 function now(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
@@ -608,6 +627,7 @@ function orderCard(o){
       <span class="date">${esc(o.date.slice(5))}</span>
     </div>
     <div class="flagrow">
+      ${(o.status!=="done")?(kakouReady(o)?'<span class="pill kakou-ok">✅ 加工OK</span>':(((o.mall==="rakuten"&&!o.paid)?'<span class="pill pay-wait">💰 支払確認</span>':'')+(!o.shipConfirmed?'<span class="pill ship-wait">🚚 配送確認</span>':''))):""}
       ${o.custType?'<span class="pill cust-'+(o.custType==="法人"?"corp":"indiv")+'">'+(o.custType==="法人"?"🏢":"🏠")+' '+esc(o.custType)+'</span>':''}
       ${o.deliveryDate?'<span class="pill date-spec">⏰ '+esc(o.deliveryDate)+' 着指定</span>':''}
       ${(o.mall==="rakuten"&&o.status==="new")?'<span class="pill prog">'+esc(rkProgressLabel(o))+'</span>':''}
@@ -704,6 +724,12 @@ function openOrderDrawer(id){
     ${o.remarks?`<div class="remarks-box"><b>📝 お客様備考</b>\n${esc(o.remarks)}</div>`:""}
     <label class="fld">お客様名${o.customer?'':'（ヤフーは自動取得できないため手入力）'}</label>
     <input class="txt" id="o-cust" placeholder="例：堀上 / 佐藤" value="${esc(o.customer||'')}" />
+    <div class="sec-t">加工の準備</div>
+    <div class="prep-box ${kakouReady(o)?'ok':''}">
+      <div class="prep-line"><span>💰 支払</span><span class="${isPaidOk(o)?'done':'wait'}">${isPaidOk(o)?'✅ 確認済'+(o.mall!=='rakuten'?'（ヤフーは手動把握）':''):'⏳ 入金待ち（API把握）'}</span></div>
+      <label class="prep-check"><input type="checkbox" id="o-shipconf" ${o.shipConfirmed?'checked':''} onchange="toggleShipConfirm()"> 🚚 配送確認済み（送料・営業所・お届け方法をお客様と確認した）</label>
+      <div class="prep-result">${kakouReady(o)?'✅ <b>加工OK</b>（支払・配送とも確認済 → 加工して良い合図）':'⏳ 支払と配送確認が揃うと「加工OK」になります'}</div>
+    </div>
     <div class="sec-t">ステータス</div>
     <div class="status-pick" id="o-status">
       ${O_STATUS.map(s=>`<button data-s="${s.k}" class="${o.status===s.k?'active':''}">${s.label}</button>`).join("")}
@@ -746,6 +772,13 @@ async function apiCall(body){
   return await res.json();
 }
 function rkMsg(r){ return (r.messages&&r.messages.map(m=>m.message).filter(Boolean).join(" / ")) || r.error || ("HTTP"+(r.code||"?")); }
+function toggleShipConfirm(){
+  const o=getOrder(state.drawer.id); if(!o) return;
+  o.shipConfirmed=$("#o-shipconf").checked;
+  if(API_URL) apiPost({action:"order", id:o.id, shipConfirmed:o.shipConfirmed});
+  render(); openOrderDrawer(o.id);
+  toast(o.shipConfirmed?"配送確認済みにしました":"配送確認を外しました");
+}
 async function rakutenConfirmFromDrawer(){
   const o=getOrder(state.drawer.id); if(!o) return;
   const warn = needsFreight(o) ? "⚠️ 2m以上の商品です。\n運賃見積り→お客様了承→楽天で送料追加 は完了していますか？\n（未完了なら先に楽天R-Backofficeで送料を追加してください）\n\n" : "";
@@ -1042,7 +1075,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
 });
 // expose for inline onclick
-Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer});
+Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,toggleShipConfirm});
 </script>
 </body>
 </html>
