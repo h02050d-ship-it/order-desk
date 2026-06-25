@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#7a5c3e" />
+<title>受注・問い合わせ管理｜林材木店</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%237a5c3e'/%3E%3Ctext x='32' y='44' font-size='38' text-anchor='middle' fill='white' font-family='sans-serif'%3E林%3C/text%3E%3C/svg%3E" />
+<style>
+  :root{
+    --bg:#f4efe7; --panel:#fffdf9; --panel2:#faf6ef; --ink:#2e2a24; --muted:#8a8175;
+    --line:#e6ddcf; --line2:#efe8dc; --brand:#7a5c3e; --brand-d:#5f472e; --accent:#c08a3e;
+    --rakuten:#bf0000; --yahoo:#ff0033;
+    --new:#2f6fed; --prep:#c08a3e; --ship:#1f9d72; --done:#8a8175;
+    --todo:#d9534f; --doing:#c08a3e; --rep:#1f9d72;
+    --shadow:0 1px 2px rgba(0,0,0,.05),0 6px 18px rgba(80,60,30,.08);
+    --radius:14px;
+  }
+  [data-theme="dark"]{
+    --bg:#1c1916; --panel:#27231e; --panel2:#221f1a; --ink:#efe7da; --muted:#a99e8c;
+    --line:#3a342c; --line2:#322d26; --panel:#27231e; --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Kaku Gothic ProN","Yu Gothic UI",Meiryo,sans-serif;
+    background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  button{font-family:inherit; cursor:pointer}
+  .hidden{display:none !important}
+
+  /* ===== Header ===== */
+  header{
+    position:sticky; top:0; z-index:30; background:var(--brand); color:#fff;
+    padding:10px 14px calc(10px + env(safe-area-inset-top)); padding-top:max(10px,env(safe-area-inset-top));
+    box-shadow:0 2px 10px rgba(0,0,0,.15);
+  }
+  .h-row{display:flex; align-items:center; gap:10px}
+  .logo{width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,.15);display:grid;place-items:center;font-weight:700}
+  .h-title{font-size:16px; font-weight:700; letter-spacing:.02em}
+  .h-sub{font-size:11px; opacity:.8; margin-top:1px}
+  .h-spacer{flex:1}
+  .icon-btn{background:rgba(255,255,255,.12); border:0; color:#fff; width:34px;height:34px;border-radius:9px; font-size:15px; display:grid;place-items:center}
+  .icon-btn:active{transform:scale(.94)}
+
+  /* KPI chips */
+  .kpis{display:flex; gap:8px; margin-top:10px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px}
+  .kpi{flex:0 0 auto; background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.18); border-radius:11px; padding:7px 11px; color:#fff; display:flex; align-items:center; gap:8px; min-width:96px}
+  .kpi.active{background:#fff; color:var(--brand); border-color:#fff}
+  .kpi .n{font-size:19px; font-weight:800; line-height:1}
+  .kpi .l{font-size:10.5px; opacity:.9; line-height:1.15}
+  .kpi.active .l{opacity:.7}
+
+  /* Tabs */
+  .tabs{display:flex; gap:6px; margin-top:10px}
+  .tab{flex:1; background:rgba(255,255,255,.1); color:#fff; border:0; border-radius:10px 10px 0 0; padding:9px; font-size:13.5px; font-weight:700; opacity:.75}
+  .tab.active{background:var(--bg); color:var(--brand); opacity:1}
+
+  /* Toolbar */
+  .toolbar{display:flex; gap:8px; align-items:center; padding:10px 14px 4px; flex-wrap:wrap}
+  .seg{display:flex; background:var(--panel2); border:1px solid var(--line); border-radius:10px; overflow:hidden}
+  .seg button{background:transparent; border:0; color:var(--muted); padding:7px 12px; font-size:12.5px; font-weight:600}
+  .seg button.active{background:var(--brand); color:#fff}
+  .search{flex:1; min-width:140px; display:flex; align-items:center; gap:6px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:7px 11px}
+  .search input{border:0; background:transparent; outline:none; color:var(--ink); font-size:13.5px; width:100%}
+
+  main{padding:8px 14px 90px; max-width:1200px; margin:0 auto}
+
+  /* ===== Kanban ===== */
+  .board{display:grid; grid-template-columns:repeat(4,1fr); gap:12px}
+  .col{background:var(--panel2); border:1px solid var(--line); border-radius:var(--radius); padding:9px; min-height:120px}
+  .col-h{display:flex; align-items:center; gap:7px; padding:2px 4px 9px; font-size:13px; font-weight:700}
+  .col-h .dot{width:9px;height:9px;border-radius:50%}
+  .col-h .cnt{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--muted); font-size:11.5px; border-radius:20px; padding:1px 8px; font-weight:700}
+
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:11px; padding:10px; margin-bottom:9px; box-shadow:var(--shadow); cursor:pointer; transition:transform .08s}
+  .card:active{transform:scale(.99)}
+  .card .top{display:flex; align-items:center; gap:6px; margin-bottom:6px}
+  .badge{font-size:10.5px; font-weight:800; color:#fff; border-radius:6px; padding:2px 7px; letter-spacing:.02em}
+  .badge.rakuten{background:var(--rakuten)} .badge.yahoo{background:var(--yahoo)}
+  .card .ono{font-size:11px; color:var(--muted); font-weight:600; margin-left:auto}
+  .card .cust{font-size:14px; font-weight:700; margin-bottom:2px}
+  .card .items{font-size:12px; color:var(--muted); line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+  .card .foot{display:flex; align-items:center; gap:8px; margin-top:8px}
+  .card .price{font-size:14px; font-weight:800}
+  .card .date{font-size:11px; color:var(--muted); margin-left:auto}
+  .card .flagrow{display:flex; gap:6px; margin-top:7px; flex-wrap:wrap}
+  .pill{font-size:10.5px; border-radius:20px; padding:2px 8px; font-weight:700; border:1px solid var(--line2)}
+  .pill.warn{background:#fdecec; color:#c0392b; border-color:#f5c6c2}
+  .pill.msg{background:#eef4ff; color:#2f6fed; border-color:#cfe0ff}
+  .pill.memo{background:var(--panel2); color:var(--muted)}
+  [data-theme="dark"] .pill.warn{background:#3a2422;color:#ff9b91;border-color:#5a3330}
+  [data-theme="dark"] .pill.msg{background:#1f2a3f;color:#9cc0ff;border-color:#2f415f}
+  .nextbtn{width:100%; margin-top:8px; background:var(--panel2); border:1px dashed var(--line); color:var(--brand); border-radius:9px; padding:7px; font-size:12px; font-weight:700}
+  .nextbtn:active{background:var(--line2)}
+  .col-empty{color:var(--muted); font-size:12px; text-align:center; padding:18px 6px}
+
+  /* ===== Inquiry list ===== */
+  .list{display:flex; flex-direction:column; gap:9px}
+  .qrow{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:11px 12px; box-shadow:var(--shadow); cursor:pointer; display:flex; gap:11px; align-items:flex-start}
+  .qrow:active{transform:scale(.997)}
+  .qrow .left{flex:1; min-width:0}
+  .qrow .qhead{display:flex; align-items:center; gap:7px; margin-bottom:3px; flex-wrap:wrap}
+  .qrow .subj{font-weight:700; font-size:14px}
+  .qrow .excerpt{font-size:12.5px; color:var(--muted); line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+  .qrow .meta{font-size:11px; color:var(--muted); margin-top:5px; display:flex; gap:10px; flex-wrap:wrap}
+  .st{font-size:10.5px; font-weight:800; border-radius:20px; padding:3px 9px; white-space:nowrap}
+  .st.todo{background:#fdecec; color:#c0392b} .st.doing{background:#fbf0dc; color:#a06a14} .st.done{background:#e7f6ef; color:#177a59}
+  [data-theme="dark"] .st.todo{background:#3a2422;color:#ff9b91}
+  [data-theme="dark"] .st.doing{background:#3a3320;color:#e3b65f}
+  [data-theme="dark"] .st.done{background:#1f3a30;color:#7fe0b8}
+
+  /* ===== Drawer ===== */
+  .scrim{position:fixed; inset:0; background:rgba(20,16,10,.45); z-index:50; opacity:0; pointer-events:none; transition:opacity .18s}
+  .scrim.on{opacity:1; pointer-events:auto}
+  .drawer{position:fixed; top:0; right:0; height:100%; width:min(480px,100%); background:var(--bg); z-index:60; transform:translateX(102%); transition:transform .22s cubic-bezier(.2,.8,.2,1); display:flex; flex-direction:column; box-shadow:-8px 0 30px rgba(0,0,0,.2)}
+  .drawer.on{transform:none}
+  .d-head{display:flex; align-items:center; gap:10px; padding:14px; border-bottom:1px solid var(--line); background:var(--panel)}
+  .d-head .badge{font-size:11px}
+  .d-head h3{margin:0; font-size:15px}
+  .d-close{margin-left:auto; background:var(--panel2); border:1px solid var(--line); color:var(--ink); width:32px;height:32px;border-radius:9px; font-size:16px}
+  .d-body{padding:14px; overflow:auto; flex:1}
+  .d-foot{padding:12px 14px calc(12px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); background:var(--panel); display:flex; gap:9px; flex-wrap:wrap}
+
+  .kv{display:grid; grid-template-columns:84px 1fr; gap:6px 10px; font-size:13.5px; margin-bottom:14px}
+  .kv .k{color:var(--muted)}
+  .kv .v{font-weight:600}
+  .sec-t{font-size:11.5px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin:16px 0 8px}
+  table.items-t{width:100%; border-collapse:collapse; font-size:13px}
+  table.items-t th{text-align:left; color:var(--muted); font-weight:600; font-size:11.5px; border-bottom:1px solid var(--line); padding:5px 4px}
+  table.items-t td{padding:7px 4px; border-bottom:1px solid var(--line2)}
+  table.items-t td.num{text-align:right; white-space:nowrap}
+  .total-row{display:flex; justify-content:space-between; align-items:center; margin-top:10px; font-weight:800; font-size:15px}
+
+  .status-pick{display:flex; gap:6px; flex-wrap:wrap}
+  .status-pick button{border:1px solid var(--line); background:var(--panel); color:var(--muted); border-radius:9px; padding:8px 11px; font-size:12.5px; font-weight:700}
+  .status-pick button.active{color:#fff; border-color:transparent}
+  .status-pick button.active[data-s="new"]{background:var(--new)}
+  .status-pick button.active[data-s="preparing"]{background:var(--prep)}
+  .status-pick button.active[data-s="shipped"]{background:var(--ship)}
+  .status-pick button.active[data-s="done"]{background:var(--done)}
+  .status-pick button.active[data-s="todo"]{background:var(--todo)}
+  .status-pick button.active[data-s="doing"]{background:var(--doing)}
+  .status-pick button.active[data-s="replied"]{background:var(--rep)}
+
+  label.fld{display:block; font-size:12px; color:var(--muted); font-weight:600; margin:12px 0 5px}
+  input.txt, textarea.txt, select.sel{width:100%; border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:10px; padding:10px 11px; font-size:13.5px; font-family:inherit; outline:none}
+  textarea.txt{min-height:120px; resize:vertical; line-height:1.5}
+  input.txt:focus, textarea.txt:focus, select.sel:focus{border-color:var(--brand)}
+
+  .msg-quote{background:var(--panel2); border:1px solid var(--line); border-left:3px solid var(--brand); border-radius:10px; padding:11px 12px; font-size:13.5px; line-height:1.6; white-space:pre-wrap; max-height:230px; overflow:auto}
+
+  .btn{border:0; border-radius:11px; padding:11px 14px; font-size:13.5px; font-weight:700}
+  .btn.primary{background:var(--brand); color:#fff}
+  .btn.primary:active{background:var(--brand-d)}
+  .btn.ghost{background:var(--panel2); color:var(--ink); border:1px solid var(--line)}
+  .btn.grow{flex:1}
+  .btn.sm{padding:8px 11px; font-size:12.5px}
+
+  .tplbar{display:flex; gap:6px; align-items:center; flex-wrap:wrap}
+  .hist{margin-top:6px}
+  .hist .h-item{font-size:12px; color:var(--muted); padding:6px 0; border-bottom:1px dashed var(--line2)}
+
+  /* ===== Login ===== */
+  .gate{position:fixed; inset:0; z-index:80; background:var(--bg); display:grid; place-items:center; padding:22px}
+  .gate-card{width:min(380px,100%); background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:26px 22px; box-shadow:var(--shadow); text-align:center}
+  .gate-card .logo{width:54px;height:54px;border-radius:14px;background:var(--brand);color:#fff;font-size:26px;margin:0 auto 12px}
+  .gate-card h2{margin:4px 0 2px; font-size:18px}
+  .gate-card p{margin:0 0 16px; color:var(--muted); font-size:12.5px}
+  .gate-card input{margin-bottom:10px}
+  .gate-err{color:#c0392b; font-size:12.5px; min-height:16px; margin:2px 0 8px}
+  .gate-chk{display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--muted); justify-content:center; margin-top:10px}
+
+  /* ===== FAB ===== */
+  .fab{position:fixed; right:18px; bottom:calc(18px + env(safe-area-inset-bottom)); z-index:40; background:var(--brand); color:#fff; border:0; border-radius:16px; padding:14px 18px; font-size:14px; font-weight:800; box-shadow:0 8px 22px rgba(80,60,30,.35); display:flex; align-items:center; gap:8px}
+  .fab:active{transform:scale(.96)}
+
+  .toast{position:fixed; left:50%; bottom:calc(26px + env(safe-area-inset-bottom)); transform:translateX(-50%) translateY(20px); background:#2e2a24; color:#fff; padding:11px 18px; border-radius:12px; font-size:13.5px; z-index:90; opacity:0; transition:all .2s; box-shadow:0 8px 22px rgba(0,0,0,.3); pointer-events:none}
+  .toast.on{opacity:1; transform:translateX(-50%)}
+
+  .empty-big{text-align:center; color:var(--muted); padding:60px 20px}
+  .empty-big .e-ico{font-size:40px; margin-bottom:8px}
+
+  /* dim banner */
+  .demo-banner{background:#fbf0dc; color:#8a5a12; border:1px solid #ecd6a8; border-radius:10px; padding:8px 12px; font-size:12px; margin:10px 14px 0; display:flex; gap:8px; align-items:center}
+  [data-theme="dark"] .demo-banner{background:#332a18;color:#e3b65f;border-color:#5a4a26}
+
+  @media(max-width:860px){
+    .board{grid-template-columns:1fr; gap:10px}
+    .col{min-height:auto}
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN GATE ============ -->
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <div class="logo">林</div>
+    <h2>受注・問い合わせ管理</h2>
+    <p>林材木店 EC（楽天・ヤフー）</p>
+    <input class="txt" id="g-email" type="email" placeholder="メールアドレス" autocomplete="username" />
+    <input class="txt" id="g-pass" type="password" placeholder="パスワード" autocomplete="current-password" />
+    <div class="gate-err" id="g-err"></div>
+    <button class="btn primary" style="width:100%" id="g-btn">ログイン</button>
+    <label class="gate-chk"><input type="checkbox" id="g-keep" checked /> ログインを保持する</label>
+    <div class="gate-chk hidden" id="g-demo" style="margin-top:14px;font-size:11.5px">🧪 デモ表示中：任意のメール／パスワードでお試しいただけます</div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+  <header>
+    <div class="h-row">
+      <div class="logo">林</div>
+      <div>
+        <div class="h-title">受注・問い合わせ管理</div>
+        <div class="h-sub" id="h-sub">林材木店 EC</div>
+      </div>
+      <div class="h-spacer"></div>
+      <button class="icon-btn" id="btn-refresh" title="更新">⟳</button>
+      <button class="icon-btn" id="btn-theme" title="表示切替">◐</button>
+      <button class="icon-btn" id="btn-settings" title="設定">⚙</button>
+    </div>
+
+    <div class="kpis" id="kpis"></div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="orders">📋 受注ボード</button>
+      <button class="tab" data-tab="inquiries">💬 問い合わせ</button>
+    </div>
+  </header>
+
+  <div class="demo-banner" id="demo-banner">
+    <span>🧪</span><span>デモデータ表示中。Gmail解析バックエンド接続後に本番注文が入ります。</span>
+  </div>
+
+  <div class="toolbar">
+    <div class="seg" id="mall-seg">
+      <button data-mall="all" class="active">すべて</button>
+      <button data-mall="rakuten">楽天</button>
+      <button data-mall="yahoo">ヤフー</button>
+    </div>
+    <div class="search">
+      <span>🔍</span>
+      <input id="search" type="search" placeholder="注文番号・お客様・商品で検索" />
+    </div>
+  </div>
+
+  <main>
+    <section id="view-orders"></section>
+    <section id="view-inquiries" class="hidden"></section>
+  </main>
+
+  <button class="fab" id="fab">＋ <span id="fab-label">注文を追加</span></button>
+</div>
+
+<!-- Drawer -->
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer">
+  <div class="d-head" id="d-head"></div>
+  <div class="d-body" id="d-body"></div>
+  <div class="d-foot" id="d-foot"></div>
+</aside>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===========================================================
+   受注・問い合わせ管理ツール（林材木店 EC）
+   画面=GitHub Pages / 将来データ=GAS(API_URL)。今はデモ＋localStorage。
+   =========================================================== */
+const API_URL = "https://script.google.com/macros/s/AKfycbwxyn-27FkDO0glFdHwqiN6NiXG5vY0rZXOAfBMDMnh2aSBHO9KxqQRThOZb7W8hAT6/exec"; // GAS exec。空にするとデモ(ローカル)モード。
+
+const MALL = {
+  rakuten:{ label:"楽天", cls:"rakuten",
+    orderUrl:"https://order.rms.rakuten.co.jp/",      // RMS 受注管理
+    msgUrl:"https://r-messe.rms.rakuten.co.jp/" },     // R-Messe 問い合わせ
+  yahoo:{ label:"Yahoo!", cls:"yahoo",
+    orderUrl:"https://pro.store.yahoo.co.jp/",          // ストアクリエイターPro
+    msgUrl:"https://pro.store.yahoo.co.jp/" }
+};
+const O_STATUS = [
+  {k:"new",       label:"新規受注",   dot:"var(--new)"},
+  {k:"preparing", label:"出荷準備中", dot:"var(--prep)"},
+  {k:"shipped",   label:"出荷済",     dot:"var(--ship)"},
+  {k:"done",      label:"完了",       dot:"var(--done)"}
+];
+const O_NEXT = {new:"preparing", preparing:"shipped", shipped:"done", done:null};
+const O_NEXT_LABEL = {new:"▶ 出荷準備へ", preparing:"▶ 出荷済へ", shipped:"▶ 完了へ"};
+const Q_STATUS = [
+  {k:"todo",  label:"未対応", cls:"todo"},
+  {k:"doing", label:"対応中", cls:"doing"},
+  {k:"done",  label:"返信済", cls:"done"}
+];
+
+const DEFAULT_TEMPLATES = [
+  {title:"在庫あり・通常発送", body:"この度は林材木店をご利用いただき誠にありがとうございます。\nご注文の商品は在庫がございます。ご入金確認後、2〜3営業日以内に発送いたします。\n発送が完了しましたら改めてご連絡いたします。何卒よろしくお願いいたします。"},
+  {title:"納期のご案内（取り寄せ）", body:"この度はご注文ありがとうございます。\nご注文の商品は只今お取り寄せのため、発送まで〇日ほどお時間をいただいております。\n発送予定が確定しましたら改めてご連絡いたします。ご了承のほどよろしくお願いいたします。"},
+  {title:"送料・まとめ発送のご案内", body:"お問い合わせありがとうございます。\nお届け先の地域は送料〇〇円となります。複数商品をまとめてご注文いただくと送料がお得になる場合がございます。\nご不明な点がございましたらお気軽にお問い合わせください。"},
+  {title:"発送完了のお知らせ", body:"お待たせいたしました。ご注文の商品を本日発送いたしました。\nお届けまで今しばらくお待ちくださいませ。\nこの度は林材木店をご利用いただき誠にありがとうございました。"},
+  {title:"欠品・お詫び", body:"この度はご注文ありがとうございます。あいにくご注文の商品が品切れとなっており、誠に申し訳ございません。\n入荷の見込みは〇〇頃を予定しております。お待ちいただくことが難しい場合はキャンセル対応も承ります。\nご迷惑をおかけし申し訳ございません。"}
+];
+
+/* ---------- demo data ---------- */
+const DEMO_ORDERS = [
+  {id:"o1", mall:"rakuten", orderNo:"307123-20260624-0001841", date:"2026-06-24 09:12", customer:"佐藤 健一",
+   items:[{name:"桧 無垢フローリング 1820×108 無節 20枚入", qty:2, price:9800},{name:"オプション：両端直角カット", qty:1, price:1200}],
+   total:20800, status:"new", memo:"", tracking:"", hasMsg:true},
+  {id:"o2", mall:"yahoo", orderNo:"hayazaimuku-20260624-00041", date:"2026-06-24 08:40", customer:"山田 由美",
+   items:[{name:"杉 羽目板 1820×135 上小節 20枚入", qty:1, price:7600}],
+   total:7600, status:"new", memo:"", tracking:"", hasMsg:false},
+  {id:"o3", mall:"rakuten", orderNo:"307123-20260623-0001802", date:"2026-06-23 17:25", customer:"田中 物産（株）",
+   items:[{name:"桧 無垢フローリング 910×108 丸節 40枚入", qty:4, price:8400},{name:"自然塗装仕上げ", qty:1, price:3200}],
+   total:36800, status:"preparing", memo:"領収書（宛名：田中物産株式会社）希望", tracking:"", hasMsg:true},
+  {id:"o4", mall:"yahoo", orderNo:"hayazaimuku-20260623-00038", date:"2026-06-23 13:02", customer:"鈴木 工務店",
+   items:[{name:"杉 野地板 1985×180 6枚入", qty:6, price:2200}],
+   total:13200, status:"preparing", memo:"", tracking:"", hasMsg:false},
+  {id:"o5", mall:"rakuten", orderNo:"307123-20260622-0001775", date:"2026-06-22 11:48", customer:"高橋 真",
+   items:[{name:"桧 スノコ板 ブロック 12枚", qty:1, price:5400}],
+   total:5400, status:"shipped", memo:"", tracking:"西濃 1234-5678-9012", hasMsg:false},
+  {id:"o6", mall:"yahoo", orderNo:"hayazaimuku-20260621-00031", date:"2026-06-21 16:30", customer:"渡辺 建築",
+   items:[{name:"杉 羽目板 1820×135 節有 20枚入", qty:3, price:5200}],
+   total:15600, status:"done", memo:"", tracking:"佐川 4444-1111-2222", hasMsg:false}
+];
+const DEMO_INQUIRIES = [
+  {id:"q1", mall:"rakuten", orderNo:"307123-20260624-0001841", customer:"佐藤 健一", date:"2026-06-24 10:05",
+   subject:"納期について", category:"商品・納期について", status:"todo",
+   replyUrl:"https://rmesse.rms.rakuten.co.jp/inquiry/",
+   body:"先ほど注文した者です。\n施工日が来月10日に決まっているのですが、それまでに届きますでしょうか？\nお手数ですがご確認のほどよろしくお願いいたします。", history:[]},
+  {id:"q2", mall:"yahoo", orderNo:"", customer:"中村 さくら", date:"2026-06-24 09:30",
+   subject:"商品の在庫確認", category:"注文前の質問", status:"todo",
+   replyUrl:"https://talk.shopping.yahoo.co.jp/",
+   body:"杉の羽目板（1820×135 上小節）を30枚ほど欲しいのですが、在庫はありますか？\nまた、まとめて送ってもらう場合の送料も教えてください。", history:[]},
+  {id:"q3", mall:"rakuten", orderNo:"307123-20260623-0001802", customer:"田中 物産（株）", date:"2026-06-23 18:10",
+   subject:"領収書の発行について", category:"領収書", status:"doing",
+   replyUrl:"https://rmesse.rms.rakuten.co.jp/inquiry/",
+   body:"先日注文いたしました。領収書を「田中物産株式会社」宛で発行していただけますでしょうか。\nよろしくお願いいたします。", history:[{at:"2026-06-23 18:40", text:"対応中にしました"}]},
+  {id:"q4", mall:"yahoo", orderNo:"hayazaimuku-20260621-00031", customer:"渡辺 建築", date:"2026-06-21 17:00",
+   subject:"ありがとうございました", category:"その他", status:"done",
+   replyUrl:"https://talk.shopping.yahoo.co.jp/",
+   body:"本日商品が届きました。きれいな仕上がりで満足しています。またお願いします。",
+   history:[{at:"2026-06-21 17:20", text:"お礼の返信を送信"}]}
+];
+
+/* ---------- state ---------- */
+const LS = {
+  cred:"orderdesk_cred", theme:"orderdesk_theme", tpl:"orderdesk_templates",
+  oOverlay:"orderdesk_order_overlay", qOverlay:"orderdesk_inq_overlay",
+  extraO:"orderdesk_extra_orders", extraQ:"orderdesk_extra_inq",
+  serverCache:"orderdesk_server_cache"
+};
+let state = {
+  tab:"orders", mall:"all", search:"",
+  orders:[], inquiries:[], templates:[],
+  drawer:null // {type, id}
+};
+
+function load(k, def){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):def; }catch(e){ return def; } }
+function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+
+/* ---- サーバ(GAS)連携層。API_URLが空ならデモ＋localStorage ---- */
+const SERVER = { loaded:false, orders:[], inquiries:[], templates:[] };
+let CRED = null; // {email,pass}
+
+function buildData(){
+  if(API_URL){ // 本番：サーバが真実。テンプレは端末ローカル維持
+    state.orders     = SERVER.loaded ? SERVER.orders     : [];
+    state.inquiries  = SERVER.loaded ? SERVER.inquiries  : [];
+    state.templates  = load(LS.tpl, (SERVER.templates&&SERVER.templates.length)?SERVER.templates:DEFAULT_TEMPLATES);
+    return;
+  }
+  // デモ：DEMO + 手動追加 + localStorage overlay
+  const oOv = load(LS.oOverlay, {});       // id -> {status,memo,tracking}
+  const qOv = load(LS.qOverlay, {});        // id -> {status, history, draft}
+  const extraO = load(LS.extraO, []);
+  const extraQ = load(LS.extraQ, []);
+  state.orders = [...DEMO_ORDERS, ...extraO].map(o=>{
+    const ov = oOv[o.id]||{};
+    return {...o, status:ov.status||o.status, memo:ov.memo!==undefined?ov.memo:o.memo, tracking:ov.tracking!==undefined?ov.tracking:o.tracking};
+  });
+  state.inquiries = [...DEMO_INQUIRIES, ...extraQ].map(q=>{
+    const ov = qOv[q.id]||{};
+    return {...q, status:ov.status||q.status, history:ov.history||q.history||[], draft:ov.draft||""};
+  });
+  state.templates = load(LS.tpl, DEFAULT_TEMPLATES);
+}
+
+async function loadFromServer(){
+  if(!API_URL || !CRED) return;
+  const cache = load(LS.serverCache, null); // stale-while-revalidate：まず前回分を即表示
+  if(cache && !SERVER.loaded){ SERVER.orders=cache.orders||[]; SERVER.inquiries=cache.inquiries||[]; SERVER.templates=cache.templates||[]; SERVER.loaded=true; buildData(); render(); }
+  try{
+    const u = new URL(API_URL);
+    u.searchParams.set("action","board"); u.searchParams.set("email",CRED.email); u.searchParams.set("pass",CRED.pass);
+    const res = await fetch(u.toString(), {method:"GET"});
+    const data = await res.json();
+    if(!data.ok){
+      if(data.error==="unauthorized"){ // 認証失敗→ログイン画面へ戻す
+        localStorage.removeItem(LS.cred); sessionStorage.removeItem(LS.cred); CRED=null;
+        $("#app").classList.add("hidden"); $("#gate").classList.remove("hidden");
+        $("#g-err").textContent="メールまたはパスワードが違います";
+      } else { toast("取得に失敗しました"); }
+      return;
+    }
+    SERVER.orders=data.orders||[]; SERVER.inquiries=data.inquiries||[]; SERVER.templates=data.templates||[]; SERVER.loaded=true;
+    save(LS.serverCache, {orders:SERVER.orders, inquiries:SERVER.inquiries, templates:SERVER.templates});
+    buildData(); render();
+  }catch(e){ toast("サーバ取得に失敗（オフライン表示）"); }
+}
+function apiPost(body){
+  if(!API_URL || !CRED) return;
+  try{
+    fetch(API_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify(Object.assign({email:CRED.email, pass:CRED.pass}, body))}).catch(()=>{});
+  }catch(e){}
+}
+
+function saveOrderOverlay(o){
+  if(API_URL){ apiPost({action:"order", id:o.id, status:o.status, memo:o.memo, tracking:o.tracking}); return; }
+  const ov = load(LS.oOverlay, {});
+  ov[o.id] = {status:o.status, memo:o.memo, tracking:o.tracking};
+  save(LS.oOverlay, ov);
+}
+function saveInqOverlay(q){
+  if(API_URL){ apiPost({action:"inquiry", id:q.id, status:q.status, draft:q.draft||"", history:q.history||[]}); return; }
+  const ov = load(LS.qOverlay, {});
+  ov[q.id] = {status:q.status, history:q.history, draft:q.draft||""};
+  save(LS.qOverlay, ov);
+}
+
+/* ---------- helpers ---------- */
+const $ = s=>document.querySelector(s);
+const yen = n=>"¥"+Number(n||0).toLocaleString("ja-JP");
+const esc = s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function itemsSummary(items){ return items.map(i=>`${i.name}${i.qty>1?" ×"+i.qty:""}`).join("、"); }
+function getOrder(id){ return state.orders.find(o=>o.id===id); }
+function getInq(id){ return state.inquiries.find(q=>q.id===id); }
+function now(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
+
+function matchFilter(o){
+  if(state.mall!=="all" && o.mall!==state.mall) return false;
+  const s = state.search.trim().toLowerCase();
+  if(!s) return true;
+  const hay = [o.orderNo, o.customer, o.subject, (o.items?itemsSummary(o.items):"")].join(" ").toLowerCase();
+  return hay.includes(s);
+}
+
+let toastTimer;
+function toast(msg){
+  const t=$("#toast"); t.textContent=msg; t.classList.add("on");
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("on"),1900);
+}
+
+/* =========================================================
+   RENDER — KPIs
+========================================================= */
+function renderKPIs(){
+  const o = state.orders;
+  const unshipped = o.filter(x=>x.status==="new"||x.status==="preparing").length;
+  const newCnt = o.filter(x=>x.status==="new").length;
+  const needReply = state.inquiries.filter(x=>x.status==="todo").length;
+  const doing = state.inquiries.filter(x=>x.status==="doing").length;
+  const kpis = [
+    {id:"k-new", n:newCnt, l:"新規受注", act:()=>{state.tab="orders"; state.search=""; setActiveStatus="new"; selectStatusFilter="new"; jumpOrders();}},
+    {id:"k-unship", n:unshipped, l:"未出荷", act:()=>{state.tab="orders"; jumpOrders();}},
+    {id:"k-reply", n:needReply, l:"要返信", act:()=>{state.tab="inquiries"; render();}},
+    {id:"k-doing", n:doing, l:"対応中", act:()=>{state.tab="inquiries"; render();}}
+  ];
+  const wrap = $("#kpis"); wrap.innerHTML="";
+  kpis.forEach(k=>{
+    const b=document.createElement("button"); b.className="kpi"; b.id=k.id;
+    b.innerHTML=`<span class="n">${k.n}</span><span class="l">${k.l}</span>`;
+    b.onclick=k.act; wrap.appendChild(b);
+  });
+}
+function jumpOrders(){ render(); }
+
+/* =========================================================
+   RENDER — Orders kanban
+========================================================= */
+function renderOrders(){
+  const root = $("#view-orders");
+  const list = state.orders.filter(matchFilter);
+  const board = document.createElement("div"); board.className="board";
+  O_STATUS.forEach(col=>{
+    const cards = list.filter(o=>o.status===col.k)
+      .sort((a,b)=> b.date.localeCompare(a.date));
+    const c=document.createElement("div"); c.className="col";
+    c.innerHTML=`<div class="col-h"><span class="dot" style="background:${col.dot}"></span>${col.label}<span class="cnt">${cards.length}</span></div>`;
+    if(!cards.length){ c.insertAdjacentHTML("beforeend",`<div class="col-empty">—</div>`); }
+    cards.forEach(o=>c.appendChild(orderCard(o)));
+    board.appendChild(c);
+  });
+  root.innerHTML="";
+  if(!list.length){ root.innerHTML = emptyBig("📭","該当する注文はありません"); return; }
+  root.appendChild(board);
+}
+function orderCard(o){
+  const el=document.createElement("div"); el.className="card";
+  const m=MALL[o.mall];
+  const next=O_NEXT[o.status];
+  el.innerHTML=`
+    <div class="top">
+      <span class="badge ${m.cls}">${m.label}</span>
+      <span class="ono">${esc(o.orderNo)}</span>
+    </div>
+    <div class="cust">${esc(o.customer)} 様</div>
+    <div class="items">${esc(itemsSummary(o.items))}</div>
+    <div class="foot">
+      <span class="price">${yen(o.total)}</span>
+      <span class="date">${esc(o.date.slice(5))}</span>
+    </div>
+    <div class="flagrow">
+      ${o.hasMsg?'<span class="pill msg">💬 問い合わせ</span>':''}
+      ${o.memo?'<span class="pill memo">📝 メモ</span>':''}
+      ${o.tracking?'<span class="pill memo">🚚 '+esc(o.tracking.split(" ")[0])+'</span>':''}
+    </div>
+    ${next?`<button class="nextbtn" data-next="${o.id}">${O_NEXT_LABEL[o.status]}</button>`:''}
+  `;
+  el.addEventListener("click",e=>{
+    if(e.target.closest("[data-next]")){ e.stopPropagation(); advanceOrder(o.id); return; }
+    openOrderDrawer(o.id);
+  });
+  return el;
+}
+function advanceOrder(id){
+  const o=getOrder(id); const next=O_NEXT[o.status]; if(!next) return;
+  o.status=next; saveOrderOverlay(o);
+  toast("「"+O_STATUS.find(s=>s.k===next).label+"」へ移動しました");
+  render();
+}
+
+/* =========================================================
+   RENDER — Inquiries list
+========================================================= */
+function renderInquiries(){
+  const root=$("#view-inquiries");
+  const order = {todo:0, doing:1, done:2};
+  const list = state.inquiries.filter(matchFilter)
+    .sort((a,b)=> (order[a.status]-order[b.status]) || b.date.localeCompare(a.date));
+  if(!list.length){ root.innerHTML=emptyBig("✉️","該当する問い合わせはありません"); return; }
+  const wrap=document.createElement("div"); wrap.className="list";
+  list.forEach(q=>{
+    const m=MALL[q.mall]; const st=Q_STATUS.find(s=>s.k===q.status);
+    const row=document.createElement("div"); row.className="qrow";
+    row.innerHTML=`
+      <div class="left">
+        <div class="qhead">
+          <span class="badge ${m.cls}">${m.label}</span>
+          <span class="subj">${esc(q.subject)}</span>
+        </div>
+        <div class="excerpt">${esc(q.body)}</div>
+        <div class="meta">
+          <span>👤 ${esc(q.customer)} 様</span>
+          ${q.orderNo?`<span>📦 ${esc(q.orderNo)}</span>`:""}
+          <span>🕒 ${esc(q.date.slice(5))}</span>
+        </div>
+      </div>
+      <span class="st ${st.cls}">${st.label}</span>`;
+    row.onclick=()=>openInqDrawer(q.id);
+    wrap.appendChild(row);
+  });
+  root.innerHTML=""; root.appendChild(wrap);
+}
+function emptyBig(ico,txt){ return `<div class="empty-big"><div class="e-ico">${ico}</div>${esc(txt)}</div>`; }
+
+/* =========================================================
+   DRAWER — order
+========================================================= */
+function openOrderDrawer(id){
+  const o=getOrder(id); if(!o) return; state.drawer={type:"order", id};
+  const m=MALL[o.mall];
+  $("#d-head").innerHTML=`<span class="badge ${m.cls}">${m.label}</span><h3>${esc(o.customer)} 様</h3><button class="d-close" onclick="closeDrawer()">✕</button>`;
+  const rows = o.items.map(i=>`<tr><td>${esc(i.name)}</td><td class="num">×${i.qty}</td><td class="num">${yen(i.price*i.qty)}</td></tr>`).join("");
+  $("#d-body").innerHTML=`
+    <div class="kv">
+      <span class="k">注文番号</span><span class="v">${esc(o.orderNo)}</span>
+      <span class="k">受注日時</span><span class="v">${esc(o.date)}</span>
+      <span class="k">お客様</span><span class="v">${esc(o.customer)} 様</span>
+    </div>
+    <div class="sec-t">ステータス</div>
+    <div class="status-pick" id="o-status">
+      ${O_STATUS.map(s=>`<button data-s="${s.k}" class="${o.status===s.k?'active':''}">${s.label}</button>`).join("")}
+    </div>
+    <div class="sec-t">注文内容</div>
+    <table class="items-t"><thead><tr><th>商品</th><th class="num">数</th><th class="num">金額</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="total-row"><span>合計</span><span>${yen(o.total)}</span></div>
+
+    <label class="fld">配送伝票番号</label>
+    <input class="txt" id="o-track" placeholder="例：西濃 1234-5678-9012" value="${esc(o.tracking)}" />
+    <label class="fld">メモ（社内用）</label>
+    <textarea class="txt" id="o-memo" style="min-height:70px" placeholder="領収書の宛名、特記事項など">${esc(o.memo)}</textarea>
+
+    ${o.hasMsg?`<div class="sec-t">関連</div><button class="btn ghost sm" onclick="jumpToInquiryByOrder('${o.id}')">💬 このお客様の問い合わせを開く</button>`:""}
+  `;
+  $("#d-foot").innerHTML=`
+    <button class="btn ghost grow" onclick="window.open('${m.orderUrl}','_blank')">${m.label}の受注管理を開く ↗</button>
+    <button class="btn primary" onclick="saveOrderFromDrawer()">保存</button>
+  `;
+  $("#o-status").querySelectorAll("button").forEach(b=>{
+    b.onclick=()=>{ $("#o-status").querySelectorAll("button").forEach(x=>x.classList.remove("active")); b.classList.add("active"); };
+  });
+  openDrawer();
+}
+function saveOrderFromDrawer(){
+  const o=getOrder(state.drawer.id);
+  const sel=$("#o-status").querySelector("button.active");
+  o.status = sel?sel.dataset.s:o.status;
+  o.tracking = $("#o-track").value.trim();
+  o.memo = $("#o-memo").value.trim();
+  saveOrderOverlay(o);
+  closeDrawer(); render(); toast("保存しました");
+}
+function jumpToInquiryByOrder(oid){
+  const o=getOrder(oid);
+  const q=state.inquiries.find(x=>x.customer===o.customer || (x.orderNo&&x.orderNo===o.orderNo));
+  if(q){ state.tab="inquiries"; render(); openInqDrawer(q.id); }
+  else toast("紐づく問い合わせが見つかりません");
+}
+
+/* =========================================================
+   DRAWER — inquiry
+========================================================= */
+function openInqDrawer(id){
+  const q=getInq(id); if(!q) return; state.drawer={type:"inquiry", id};
+  const m=MALL[q.mall];
+  $("#d-head").innerHTML=`<span class="badge ${m.cls}">${m.label}</span><h3>${esc(q.subject)}</h3><button class="d-close" onclick="closeDrawer()">✕</button>`;
+  const tplOpts = state.templates.map((t,i)=>`<option value="${i}">${esc(t.title)}</option>`).join("");
+  const histHtml = (q.history&&q.history.length)
+    ? q.history.map(h=>`<div class="h-item">🕒 ${esc(h.at)}　${esc(h.text)}</div>`).join("")
+    : `<div class="h-item">まだ対応履歴はありません</div>`;
+  $("#d-body").innerHTML=`
+    <div class="kv">
+      <span class="k">お客様</span><span class="v">${esc(q.customer)} 様</span>
+      <span class="k">受信日時</span><span class="v">${esc(q.date)}</span>
+      ${q.orderNo?`<span class="k">注文番号</span><span class="v">${esc(q.orderNo)}</span>`:""}
+    </div>
+    <div class="sec-t">対応ステータス</div>
+    <div class="status-pick" id="q-status">
+      ${Q_STATUS.map(s=>`<button data-s="${s.k==='done'?'replied':s.k}" data-real="${s.k}" class="${q.status===s.k?'active':''}">${s.label}</button>`).join("")}
+    </div>
+    <div class="sec-t">お客様からのメッセージ</div>
+    <div class="msg-quote">${esc(q.body)}</div>
+
+    <div class="sec-t">返信下書き</div>
+    <div class="tplbar">
+      <select class="sel" id="q-tpl" style="flex:1"><option value="">テンプレートを選ぶ…</option>${tplOpts}</select>
+      <button class="btn ghost sm" id="q-tpl-insert">差し込む</button>
+    </div>
+    <textarea class="txt" id="q-draft" placeholder="返信文を入力（テンプレを差し込めます）" style="margin-top:8px">${esc(q.draft||"")}</textarea>
+
+    <div class="sec-t">対応履歴</div>
+    <div class="hist">${histHtml}</div>
+  `;
+  $("#d-foot").innerHTML=`
+    <button class="btn primary grow" onclick="copyAndOpenMall()">📋 コピーして${m.label}を開く</button>
+    <button class="btn ghost" onclick="markReplied()">返信済にする</button>
+  `;
+  $("#q-status").querySelectorAll("button").forEach(b=>{
+    b.onclick=()=>{ $("#q-status").querySelectorAll("button").forEach(x=>x.classList.remove("active")); b.classList.add("active"); persistInqStatus(); };
+  });
+  $("#q-tpl-insert").onclick=()=>{
+    const i=$("#q-tpl").value; if(i==="") return;
+    const t=state.templates[Number(i)]; const ta=$("#q-draft");
+    ta.value = ta.value ? (ta.value.replace(/\s+$/,"")+"\n\n"+t.body) : t.body;
+    ta.focus();
+  };
+  $("#q-draft").addEventListener("input", debounce(()=>{ const qq=getInq(state.drawer.id); qq.draft=$("#q-draft").value; saveInqOverlay(qq); },400));
+  openDrawer();
+}
+function persistInqStatus(){
+  const q=getInq(state.drawer.id);
+  const sel=$("#q-status").querySelector("button.active");
+  const real = sel?sel.dataset.real:q.status;
+  if(real!==q.status){ q.status=real; saveInqOverlay(q); renderKPIs(); }
+}
+async function copyAndOpenMall(){
+  const q=getInq(state.drawer.id);
+  const text=$("#q-draft").value.trim();
+  if(!text){ toast("返信文が空です"); return; }
+  q.draft=text;
+  try{ await navigator.clipboard.writeText(text); }
+  catch(e){ const ta=$("#q-draft"); ta.select(); document.execCommand("copy"); }
+  // 履歴に記録＋対応中以上へ
+  q.history=q.history||[]; q.history.unshift({at:now(), text:"返信文をコピー → "+MALL[q.mall].label+"の問い合わせ画面へ"});
+  if(q.status==="todo") q.status="doing";
+  saveInqOverlay(q);
+  toast("返信文をコピーしました。開いた画面に貼り付けてください");
+  window.open(q.replyUrl||MALL[q.mall].msgUrl,"_blank");
+  // 履歴反映のため再描画
+  setTimeout(()=>{ openInqDrawer(q.id); renderKPIs(); },150);
+}
+function markReplied(){
+  const q=getInq(state.drawer.id);
+  q.status="done"; q.history=q.history||[]; q.history.unshift({at:now(), text:"返信済にしました"});
+  saveInqOverlay(q);
+  // 関連注文のhasMsgフラグはそのまま（履歴目的）
+  closeDrawer(); render(); toast("返信済にしました");
+}
+
+/* =========================================================
+   DRAWER — add (FAB)
+========================================================= */
+function openAddDrawer(){
+  if(state.tab==="orders") openAddOrder(); else openAddInquiry();
+}
+function openAddOrder(){
+  state.drawer={type:"addOrder"};
+  $("#d-head").innerHTML=`<h3>注文を手動追加</h3><button class="d-close" onclick="closeDrawer()">✕</button>`;
+  $("#d-body").innerHTML=`
+    <label class="fld">モール</label>
+    <select class="sel" id="a-mall"><option value="rakuten">楽天</option><option value="yahoo">ヤフー</option></select>
+    <label class="fld">注文番号</label><input class="txt" id="a-ono" placeholder="任意" />
+    <label class="fld">お客様名</label><input class="txt" id="a-cust" placeholder="例：佐藤 健一" />
+    <label class="fld">商品（1行1品：商品名 / 数量 / 単価）</label>
+    <textarea class="txt" id="a-items" placeholder="桧フローリング 1820×108 / 2 / 9800"></textarea>
+  `;
+  $("#d-foot").innerHTML=`<button class="btn ghost grow" onclick="closeDrawer()">キャンセル</button><button class="btn primary" onclick="saveNewOrder()">追加</button>`;
+  openDrawer();
+}
+function saveNewOrder(){
+  const cust=$("#a-cust").value.trim(); if(!cust){ toast("お客様名を入力してください"); return; }
+  const items=$("#a-items").value.split("\n").map(l=>l.trim()).filter(Boolean).map(l=>{
+    const p=l.split("/").map(x=>x.trim());
+    return {name:p[0]||l, qty:Number(p[1])||1, price:Number((p[2]||"0").replace(/[^\d.]/g,""))||0};
+  });
+  const total=items.reduce((s,i)=>s+i.price*i.qty,0);
+  const o={id:"m"+Date.now(), mall:$("#a-mall").value, orderNo:$("#a-ono").value.trim()||"(手動)", date:now(),
+    customer:cust, items:items.length?items:[{name:"(未入力)",qty:1,price:0}], total, status:"new", memo:"", tracking:"", hasMsg:false};
+  const extra=load(LS.extraO,[]); extra.push(o); save(LS.extraO,extra);
+  buildData(); closeDrawer(); render(); toast("注文を追加しました");
+}
+function openAddInquiry(){
+  state.drawer={type:"addInq"};
+  $("#d-head").innerHTML=`<h3>問い合わせを手動追加</h3><button class="d-close" onclick="closeDrawer()">✕</button>`;
+  $("#d-body").innerHTML=`
+    <label class="fld">モール</label>
+    <select class="sel" id="a-mall"><option value="rakuten">楽天</option><option value="yahoo">ヤフー</option></select>
+    <label class="fld">お客様名</label><input class="txt" id="a-cust" placeholder="例：中村 さくら" />
+    <label class="fld">注文番号（任意）</label><input class="txt" id="a-ono" placeholder="" />
+    <label class="fld">件名</label><input class="txt" id="a-subj" placeholder="例：在庫確認" />
+    <label class="fld">内容</label><textarea class="txt" id="a-body"></textarea>
+  `;
+  $("#d-foot").innerHTML=`<button class="btn ghost grow" onclick="closeDrawer()">キャンセル</button><button class="btn primary" onclick="saveNewInq()">追加</button>`;
+  openDrawer();
+}
+function saveNewInq(){
+  const cust=$("#a-cust").value.trim(); if(!cust){ toast("お客様名を入力してください"); return; }
+  const q={id:"mq"+Date.now(), mall:$("#a-mall").value, orderNo:$("#a-ono").value.trim(),
+    customer:cust, date:now(), subject:$("#a-subj").value.trim()||"(件名なし)", status:"todo",
+    body:$("#a-body").value.trim(), history:[], draft:""};
+  const extra=load(LS.extraQ,[]); extra.push(q); save(LS.extraQ,extra);
+  buildData(); closeDrawer(); render(); toast("問い合わせを追加しました");
+}
+
+/* =========================================================
+   SETTINGS — templates
+========================================================= */
+function openSettings(){
+  state.drawer={type:"settings"};
+  $("#d-head").innerHTML=`<h3>⚙ 設定・返信テンプレート</h3><button class="d-close" onclick="closeDrawer()">✕</button>`;
+  renderTplEditor();
+  $("#d-foot").innerHTML=`<button class="btn ghost grow" onclick="resetTemplates()">初期テンプレに戻す</button><button class="btn primary" onclick="closeDrawer()">閉じる</button>`;
+  openDrawer();
+}
+function renderTplEditor(){
+  const body=$("#d-body");
+  body.innerHTML=`
+    <p style="color:var(--muted);font-size:12.5px;margin:0 0 12px">返信下書きで差し込めるテンプレートです。自由に編集できます（この端末に保存）。</p>
+    <div id="tpl-list"></div>
+    <button class="btn ghost sm" id="tpl-add" style="margin-top:8px">＋ テンプレを追加</button>
+    <div class="sec-t">接続状態</div>
+    <div class="kv" style="grid-template-columns:110px 1fr">
+      <span class="k">データソース</span><span class="v">${API_URL?"GAS（本番）":"デモデータ（ローカル）"}</span>
+      <span class="k">ログイン</span><span class="v" id="who">${esc(load(LS.cred,{}).email||"—")}</span>
+    </div>
+    <button class="btn ghost sm" onclick="logout()" style="margin-top:10px">ログアウト</button>
+  `;
+  const list=$("#tpl-list");
+  state.templates.forEach((t,i)=>{
+    const d=document.createElement("div"); d.style.cssText="border:1px solid var(--line);border-radius:11px;padding:10px;margin-bottom:9px;background:var(--panel)";
+    d.innerHTML=`
+      <input class="txt" data-ti="${i}" data-f="title" value="${esc(t.title)}" style="font-weight:700;margin-bottom:7px" />
+      <textarea class="txt" data-ti="${i}" data-f="body" style="min-height:80px">${esc(t.body)}</textarea>
+      <button class="btn ghost sm" data-del="${i}" style="margin-top:7px">削除</button>`;
+    list.appendChild(d);
+  });
+  list.querySelectorAll("[data-f]").forEach(el=>{
+    el.addEventListener("input", debounce(()=>{
+      const i=Number(el.dataset.ti), f=el.dataset.f;
+      state.templates[i][f]=el.value; save(LS.tpl, state.templates);
+    },400));
+  });
+  list.querySelectorAll("[data-del]").forEach(b=>{
+    b.onclick=()=>{ state.templates.splice(Number(b.dataset.del),1); save(LS.tpl,state.templates); renderTplEditor(); };
+  });
+  $("#tpl-add").onclick=()=>{ state.templates.push({title:"新しいテンプレ",body:""}); save(LS.tpl,state.templates); renderTplEditor(); };
+}
+function resetTemplates(){ state.templates=JSON.parse(JSON.stringify(DEFAULT_TEMPLATES)); save(LS.tpl,state.templates); renderTplEditor(); toast("初期テンプレに戻しました"); }
+
+/* =========================================================
+   Drawer open/close
+========================================================= */
+function openDrawer(){ $("#scrim").classList.add("on"); $("#drawer").classList.add("on"); }
+function closeDrawer(){ $("#scrim").classList.remove("on"); $("#drawer").classList.remove("on"); state.drawer=null; }
+
+/* =========================================================
+   Render dispatcher
+========================================================= */
+function render(){
+  renderKPIs();
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.tab===state.tab));
+  $("#view-orders").classList.toggle("hidden", state.tab!=="orders");
+  $("#view-inquiries").classList.toggle("hidden", state.tab!=="inquiries");
+  $("#fab-label").textContent = state.tab==="orders"?"注文を追加":"問い合わせを追加";
+  if(state.tab==="orders") renderOrders(); else renderInquiries();
+  document.querySelectorAll("#mall-seg button").forEach(b=>b.classList.toggle("active", b.dataset.mall===state.mall));
+}
+
+function debounce(fn,ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
+
+/* =========================================================
+   Auth
+========================================================= */
+/* 認証方針：
+   - デモ(API_URL未設定)＝メール+パスが入力されていれば入れる（資格情報はフロントに焼かない）。
+   - 本番(API_URL設定)＝GAS側で BOARD_USERS 照合（salesboardと同方式）。ここでは送信のみ。 */
+function tryAutoLogin(){
+  const c=load(LS.cred,null);
+  if(c&&c.email&&c.pass&&authOk(c.email,c.pass)){ enterApp(c.email, c.pass); return true; }
+  return false;
+}
+function authOk(email,pass){
+  const e=(email||"").trim();
+  if(!e || !pass) return false;
+  if(!API_URL) return /.+@.+\..+/.test(e); // デモ：正しい形式のメール＋任意パスで入室
+  return true; // 本番はサーバ側で照合（暫定。GET時に unauthorized 判定）
+}
+function doLogin(){
+  const email=$("#g-email").value.trim(), pass=$("#g-pass").value;
+  if(!authOk(email,pass)){ $("#g-err").textContent="メールまたはパスワードが違います"; return; }
+  const keep=$("#g-keep").checked;
+  if(keep) save(LS.cred,{email,pass}); else { localStorage.removeItem(LS.cred); sessionStorage.setItem(LS.cred,JSON.stringify({email,pass})); }
+  enterApp(email, pass);
+}
+function logout(){ localStorage.removeItem(LS.cred); sessionStorage.removeItem(LS.cred); localStorage.removeItem(LS.serverCache); location.reload(); }
+function enterApp(email, pass){
+  CRED = {email, pass};
+  $("#gate").classList.add("hidden"); $("#app").classList.remove("hidden");
+  $("#h-sub").textContent = "林材木店 EC ・ "+(email.split("@")[0]);
+  buildData(); render();
+  if(API_URL) loadFromServer();
+}
+
+/* =========================================================
+   Wire up
+========================================================= */
+function initTheme(){
+  const t=load(LS.theme,null) || (matchMedia&&matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light");
+  document.documentElement.dataset.theme=t;
+}
+document.addEventListener("DOMContentLoaded",()=>{
+  initTheme();
+  // gate
+  if(!API_URL) $("#g-demo").classList.remove("hidden");
+  else $("#demo-banner").classList.add("hidden");
+  $("#g-btn").onclick=doLogin;
+  $("#g-pass").addEventListener("keydown",e=>{ if(e.key==="Enter") doLogin(); });
+  // session cred fallback
+  const sc=sessionStorage.getItem(LS.cred); if(sc){ try{ const c=JSON.parse(sc); if(authOk(c.email,c.pass)){ enterApp(c.email, c.pass); } }catch(e){} }
+  if(!$("#app").classList.contains("hidden")) {} else if(!tryAutoLogin()){ /* show gate */ }
+
+  // tabs
+  document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{ state.tab=t.dataset.tab; render(); });
+  // mall seg
+  document.querySelectorAll("#mall-seg button").forEach(b=>b.onclick=()=>{ state.mall=b.dataset.mall; render(); });
+  // search
+  $("#search").addEventListener("input", debounce(e=>{ state.search=e.target.value; render(); },200));
+  // header buttons
+  $("#btn-refresh").onclick=()=>{ if(API_URL){ toast("最新を取得中…"); loadFromServer(); } else { buildData(); render(); toast("再読み込みしました"); } };
+  $("#btn-theme").onclick=()=>{ const cur=document.documentElement.dataset.theme; const nx=cur==="dark"?"light":"dark"; document.documentElement.dataset.theme=nx; save(LS.theme,nx); };
+  $("#btn-settings").onclick=openSettings;
+  // fab + scrim
+  $("#fab").onclick=openAddDrawer;
+  $("#scrim").onclick=closeDrawer;
+  document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
+});
+// expose for inline onclick
+Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout});
+</script>
+</body>
+</html>
