@@ -642,14 +642,14 @@ function orderCard(o){
       <span class="date">${esc(o.date.slice(5))}</span>
     </div>
     <div class="flagrow">
-      ${(o.mall==="rakuten"&&o.status!=="done"&&!o.mailSent&&!kakouReady(o))?'<span class="pill mail-wait">📧 メール未送信</span>':''}
-      ${(o.status!=="done")?(kakouReady(o)?'<span class="pill kakou-ok">✅ 加工OK</span>':(((o.mall==="rakuten"&&!o.paid)?'<span class="pill pay-wait">💰 支払確認</span>':'')+(!o.shipConfirmed?'<span class="pill ship-wait">🚚 配送確認</span>':''))):""}
-      ${o.custType?'<span class="pill cust-'+(o.custType==="法人"?"corp":"indiv")+'">'+(o.custType==="法人"?"🏢":"🏠")+' '+esc(o.custType)+'</span>':''}
-      ${o.deliveryDate?'<span class="pill date-spec">⏰ '+esc(o.deliveryDate)+' 着指定</span>':''}
-      ${(o.mall==="rakuten"&&o.status==="new")?'<span class="pill prog">'+esc(rkProgressLabel(o))+'</span>':''}
-      ${(needsFreight(o)&&o.status==="new")?'<span class="pill warn">🚚 運賃見積り(2m〜)</span>':''}
-      ${o.remarks?'<span class="pill memo memo-on" title="備考: '+esc(o.remarks)+'">📝 備考あり</span>':''}
+      ${o.custType?'<span class="pill cust-'+(o.custType==="法人"?"corp":"indiv")+'">'+(o.custType==="法人"?"🏢 法人":("🏠 個人"+(o.branch?"・"+esc(o.branch)+"支店止め":"（支店止め）")))+'</span>':''}
       ${opts.length?'<span class="pill opt">⚙ '+esc(opts.join("・"))+'</span>':'<span class="pill opt-none">オプションなし</span>'}
+      ${o.remarks?'<span class="pill memo memo-on" title="備考: '+esc(o.remarks)+'">📝 備考あり</span>':''}
+      ${o.deliveryDate?'<span class="pill date-spec">⏰ '+esc(o.deliveryDate)+' 着指定</span>':''}
+      ${(needsFreight(o)&&o.status==="new")?'<span class="pill warn">🚚 運賃見積り(2m〜)</span>':''}
+      ${(o.mall==="rakuten"&&o.status!=="done"&&!o.mailSent)?'<span class="pill mail-wait">📧 メール未送信</span>':''}
+      ${(o.status!=="done")?(!o.shipConfirmed?'<span class="pill ship-wait">🚚 配送確認</span>':((o.mall==="rakuten"&&!o.paid)?'<span class="pill pay-wait">💰 支払確認</span>':'<span class="pill kakou-ok">✅ 加工OK</span>')):""}
+      ${(o.mall==="rakuten"&&o.status==="new")?'<span class="pill prog">📋 '+esc(o.progress&&o.progress!==100?rkProgressLabel(o):"注文確定待ち")+'</span>':''}
       ${o.hasMsg?'<span class="pill msg">💬 問い合わせ</span>':''}
       ${o.memo?'<span class="pill memo">📝 メモ</span>':''}
       ${o.tracking?'<span class="pill memo">🚚 '+esc(String(o.tracking).split(" ")[0])+'</span>':''}
