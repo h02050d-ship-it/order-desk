@@ -99,11 +99,20 @@
   .col .done-card{box-shadow:none; background:var(--panel2); border-color:var(--line2); opacity:.5}
   .col .done-card:hover{opacity:.85}
   .col .done-card .nextbtn{display:none}
+  /* B級品・C級品は背景色で一目で分かるように */
+  .card.bgrade{background:#fff7e6; border-color:#f3d488; border-left:4px solid #e8920c}
+  .card.cgrade{background:#fdeee4; border-color:#f0c49c; border-left:4px solid #d2691e}
+  [data-theme="dark"] .card.bgrade{background:#33290f; border-color:#5a4a1e; border-left-color:#e0a83c}
+  [data-theme="dark"] .card.cgrade{background:#382818; border-color:#5e4530; border-left-color:#d2691e}
+  .card .gtag{font-size:10px; font-weight:800; color:#fff; border-radius:5px; padding:1px 6px; margin-left:6px; vertical-align:middle}
+  .card .gtag.b{background:#e8920c} .card .gtag.c{background:#d2691e}
   .card .flagrow{display:flex; gap:6px; margin-top:7px; flex-wrap:wrap}
   .pill{font-size:10.5px; border-radius:20px; padding:2px 8px; font-weight:700; border:1px solid var(--line2)}
   .pill.warn{background:#fdecec; color:#c0392b; border-color:#f5c6c2}
   .pill.msg{background:#eef4ff; color:#2f6fed; border-color:#cfe0ff}
   .pill.memo{background:var(--panel2); color:var(--muted)}
+  .pill.memo-on{background:#fff8e1; color:#8a6d1a; border-color:#f0dca0; font-weight:800; cursor:help}
+  [data-theme="dark"] .pill.memo-on{background:#33290f; color:#e0c074; border-color:#5a4a1e}
   .pill.opt{background:#f3e8ff; color:#7b1fa2; border-color:#e3cdf5; font-weight:800}
   .pill.opt-none{background:transparent; color:var(--muted); border-color:var(--line2)}
   .pill.cust-corp{background:#e8eefb; color:#1f4fb5; border-color:#c6d6f5; font-weight:800}
@@ -613,13 +622,17 @@ function renderOrders(){
   root.appendChild(board);
 }
 function orderCard(o){
-  const el=document.createElement("div"); el.className="card";
+  const el=document.createElement("div");
+  const grades=(o.items||[]).map(i=>parseItem(i.name).grade);
+  const isB=grades.includes("B"); const isC=grades.includes("C");
+  el.className="card"+(isB?" bgrade":"")+(isC?" cgrade":"");
   const m=MALL[o.mall];
   const next=O_NEXT[o.status];
   const opts=orderOptions(o);
   el.innerHTML=`
     <div class="top">
       <span class="badge ${m.cls}">${m.label}</span>
+      ${isB?'<span class="gtag b">B級品</span>':''}${isC?'<span class="gtag c">C級品</span>':''}
       <span class="ono">${esc(o.orderNo)}</span>
     </div>
     <div class="cust">${orderName(o)}</div>
@@ -635,7 +648,7 @@ function orderCard(o){
       ${o.deliveryDate?'<span class="pill date-spec">⏰ '+esc(o.deliveryDate)+' 着指定</span>':''}
       ${(o.mall==="rakuten"&&o.status==="new")?'<span class="pill prog">'+esc(rkProgressLabel(o))+'</span>':''}
       ${(needsFreight(o)&&o.status==="new")?'<span class="pill warn">🚚 運賃見積り(2m〜)</span>':''}
-      ${o.remarks?'<span class="pill memo">📝 備考</span>':''}
+      ${o.remarks?'<span class="pill memo memo-on" title="備考: '+esc(o.remarks)+'">📝 備考あり</span>':''}
       ${opts.length?'<span class="pill opt">⚙ '+esc(opts.join("・"))+'</span>':'<span class="pill opt-none">オプションなし</span>'}
       ${o.hasMsg?'<span class="pill msg">💬 問い合わせ</span>':''}
       ${o.memo?'<span class="pill memo">📝 メモ</span>':''}
