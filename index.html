@@ -551,9 +551,19 @@ const RK_PROGRESS_LABEL={100:"注文確認待ち",200:"楽天処理中",300:"発
 function itemMaxLen(o){ let mx=0; (o.items||[]).forEach(i=>{ const d=parseItem(i.name).dim; if(d){ const p=d.split("×"); const L=Number(p[p.length-1])||0; if(L>mx) mx=L; } }); return mx; }
 function needsFreight(o){ return o.mall==="rakuten" && itemMaxLen(o)>=2000; } // 2m以上＝運賃見積り
 function rkProgressLabel(o){ if(o.mall!=="rakuten") return ""; return RK_PROGRESS_LABEL[o.progress] || "注文確認待ち"; }
-// 加工準備：支払確認(楽天=API/ヤフー=当面手動扱い)＋配送確認(手動チェック)が揃えば加工OK
+// 配送業者判定：大型宅配便=西濃(2m・要配送確認/メール)、宅配便=佐川(1m・確認不要)、メール便=日本郵便(サンプル)。未取得時は長さで推定(2m以上=西濃)
+function shipCarrier(o){
+  const dm=String(o.deliveryMethod||'');
+  if(/大型/.test(dm)) return "西濃";
+  if(/メール便/.test(dm)) return "日本郵便";
+  if(/宅配便/.test(dm)) return "佐川";
+  return itemMaxLen(o)>=2000 ? "西濃" : "佐川";
+}
+// 配送確認メール・配送確認チェックが必要なのは西濃(2m・支店止め/運賃見積り)のみ。佐川/メール便は不要
+function needsShipConfirm(o){ return shipCarrier(o)==="西濃"; }
+// 加工準備：支払確認(楽天=API/ヤフー=当面手動扱い)＋配送確認(西濃のみ手動チェック)が揃えば加工OK
 function isPaidOk(o){ return o.mall==="rakuten" ? !!o.paid : true; }
-function kakouReady(o){ return isPaidOk(o) && !!o.shipConfirmed; }
+function kakouReady(o){ return isPaidOk(o) && (!needsShipConfirm(o) || !!o.shipConfirmed); }
 function getOrder(id){ return state.orders.find(o=>o.id===id); }
 function getInq(id){ return state.inquiries.find(q=>q.id===id); }
 function now(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
@@ -647,8 +657,8 @@ function orderCard(o){
       ${o.remarks?'<span class="pill memo memo-on" title="備考: '+esc(o.remarks)+'">📝 備考あり</span>':''}
       ${o.deliveryDate?'<span class="pill date-spec">⏰ '+esc(o.deliveryDate)+' 着指定</span>':''}
       ${(needsFreight(o)&&o.status==="new")?'<span class="pill warn">🚚 運賃見積り(2m〜)</span>':''}
-      ${(o.mall==="rakuten"&&o.status!=="done"&&!o.mailSent)?'<span class="pill mail-wait">📧 メール未送信</span>':''}
-      ${(o.status!=="done")?(!o.shipConfirmed?'<span class="pill ship-wait">🚚 配送確認</span>':((o.mall==="rakuten"&&!o.paid)?'<span class="pill pay-wait">💰 支払確認</span>':'<span class="pill kakou-ok">✅ 加工OK</span>')):""}
+      ${(o.mall==="rakuten"&&o.status!=="done"&&!o.mailSent&&needsShipConfirm(o))?'<span class="pill mail-wait">📧 メール未送信</span>':''}
+      ${(o.status!=="done")?((needsShipConfirm(o)&&!o.shipConfirmed)?'<span class="pill ship-wait">🚚 配送確認</span>':((o.mall==="rakuten"&&!o.paid)?'<span class="pill pay-wait">💰 支払確認</span>':'<span class="pill kakou-ok">✅ 加工OK</span>')):""}
       ${(o.mall==="rakuten"&&o.status==="new")?'<span class="pill prog">📋 '+esc(o.progress&&o.progress!==100?rkProgressLabel(o):"注文確定待ち")+'</span>':''}
       ${o.hasMsg?'<span class="pill msg">💬 問い合わせ</span>':''}
       ${o.memo?'<span class="pill memo">📝 メモ</span>':''}
@@ -743,9 +753,11 @@ function openOrderDrawer(id){
     <div class="sec-t">加工の準備</div>
     <div class="prep-box ${kakouReady(o)?'ok':''}">
       <div class="prep-line"><span>💰 支払</span><span class="${isPaidOk(o)?'done':'wait'}">${isPaidOk(o)?'✅ 確認済'+(o.mall!=='rakuten'?'（ヤフーは手動把握）':''):'⏳ 入金待ち（API把握）'}</span></div>
+      ${needsShipConfirm(o)?`
       ${o.mall==="rakuten"?`<label class="prep-check"><input type="checkbox" id="o-mailsent" ${o.mailSent?'checked':''} onchange="toggleMailSent()"> 📧 配送確認メール送信済み（送料・お届けの案内メールを送った）</label>`:""}
-      <label class="prep-check"><input type="checkbox" id="o-shipconf" ${o.shipConfirmed?'checked':''} onchange="toggleShipConfirm()"> 🚚 配送確認済み（送料・営業所・お届け方法をお客様と確認した）</label>
-      <div class="prep-result">${kakouReady(o)?'✅ <b>加工OK</b>（支払・配送とも確認済 → 加工して良い合図）':'⏳ 支払と配送確認が揃うと「加工OK」になります'}</div>
+      <label class="prep-check"><input type="checkbox" id="o-shipconf" ${o.shipConfirmed?'checked':''} onchange="toggleShipConfirm()"> 🚚 配送確認済み（送料・営業所・お届け方法をお客様と確認した）</label>`
+      :`<div class="prep-line"><span>🚚 配送</span><span class="done">✅ ${esc(shipCarrier(o))}（1m通常宅配 → 配送確認不要）</span></div>`}
+      <div class="prep-result">${kakouReady(o)?'✅ <b>加工OK</b>（加工して良い合図）':(needsShipConfirm(o)?'⏳ 支払と配送確認が揃うと「加工OK」になります':'⏳ 入金が確認できると「加工OK」になります')}</div>
     </div>
     <div class="sec-t">ステータス</div>
     <div class="status-pick" id="o-status">
