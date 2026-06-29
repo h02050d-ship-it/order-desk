@@ -492,7 +492,7 @@ const $ = s=>document.querySelector(s);
 const yen = n=>"¥"+Number(n||0).toLocaleString("ja-JP");
 const esc = s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 // 節（等級）の色＝加工予定表に準拠。節有＝丸節と同じ赤
-const GRADE_COLORS={"丸節":"#d32f2f","節有":"#d32f2f","小節":"#ef6c00","上小節":"#2e7d32","特上小節":"#2e7d32","特上小":"#2e7d32","無節特上":"#6a1b9a","無節":"#1565c0","節無":"#1565c0","生節":"#795548"};
+const GRADE_COLORS={"丸節":"#d32f2f","節有":"#d32f2f","節あり":"#d32f2f","節":"#d32f2f","小節":"#ef6c00","小":"#ef6c00","上小節":"#2e7d32","特上小節":"#2e7d32","特上小":"#2e7d32","特上":"#2e7d32","無節特上":"#6a1b9a","特上無節":"#6a1b9a","無節":"#1565c0","節無":"#1565c0","生節":"#795548"};
 function gradeColor(f){ return GRADE_COLORS[f]||"#6a5a44"; }
 // 品種チップの色＝加工予定表に準拠（F=赤/12mm黄, P=青, S=紫, N=緑）。品種=チップ・節=色文字で区別
 const TYPE_BG={"フローリング":"#d32f2f","羽目板":"#1565c0","スノコ板":"#6a1b9a","スノコ":"#6a1b9a","野地板":"#2e7d32","破風板":"#5d4037","破風":"#5d4037","笠木":"#7b1fa2","框":"#8d6e63","無垢板":"#6d4c41"};
@@ -520,7 +520,7 @@ function parseItem(name){
   const type=(s.match(/フローリング|羽目板|野地板|スノコ板?|破風板?|笠木|框|無垢板/)||[])[0]||"";
   const dim=(s.match(/\d{1,3}\s*[×x]\s*\d{1,3}\s*[×x]\s*\d{3,4}/)||[""])[0].replace(/\s/g,"").replace(/x/gi,"×");
   let qty=""; const qm=s.match(/【\s*(\d+)\s*枚/)||s.match(/(\d+)\s*枚入/); if(qm) qty=qm[1]+"枚入";
-  const fushi=(s.match(/特上小節|上小節|小節|丸節|無節特上|無節|節有|節無/)||[])[0]||"";
+  const fushi=(s.match(/特上無節|無節特上|特上小節|特上小|上小節|小節|丸節|生節|無節|特上|節有|節あり|節無|節|小/)||[])[0]||"";
   return {grade,wood,type,dim,qty,fushi,raw:s};
 }
 function cleanItem(name){ // プレーンテキスト（tooltip等）
