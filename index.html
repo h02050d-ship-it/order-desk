@@ -646,7 +646,7 @@ async function autoKakouSync(){
   if(!kakouDb || !kakouAuthed || _kakouBusy) return;
   _kakouBusy=true;
   try{
-    const targets=state.orders.filter(o=>(o.status==="new"||o.status==="preparing") && kakouReady(o) && !o.kakouAdded && kakouRowsFor(o).length);
+    const targets=state.orders.filter(o=>(o.status==="new"||o.status==="preparing") && !o.tracking && kakouReady(o) && !o.kakouAdded && kakouRowsFor(o).length); // 送り状あり=加工済なので対象外
     for(const o of targets){
       const n=await kakouWrite_(o);
       toast("🪵 加工予定表に自動登録: "+orderName(o)+"（"+n+"行）");
