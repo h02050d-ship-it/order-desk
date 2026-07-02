@@ -40,6 +40,7 @@
   .logo{width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,.15);display:grid;place-items:center;font-weight:700}
   .h-title{font-size:16px; font-weight:700; letter-spacing:.02em}
   .h-sub{font-size:11px; opacity:.8; margin-top:1px}
+  .h-upd{font-size:10.5px; opacity:.75; margin-right:2px; white-space:nowrap}
   .h-spacer{flex:1}
   .icon-btn{background:rgba(255,255,255,.12); border:0; color:#fff; width:34px;height:34px;border-radius:9px; font-size:15px; display:grid;place-items:center}
   .icon-btn:active{transform:scale(.94)}
@@ -276,6 +277,7 @@
         <div class="h-sub" id="h-sub">林材木店 EC</div>
       </div>
       <div class="h-spacer"></div>
+      <span class="h-upd" id="h-upd" title="サーバから最後に取得した時刻（3分ごと＋タブ復帰時に自動更新）"></span>
       <button class="icon-btn" id="btn-refresh" title="更新">⟳</button>
       <button class="icon-btn" id="btn-theme" title="表示切替">◐</button>
       <button class="icon-btn" id="btn-settings" title="設定">⚙</button>
@@ -464,6 +466,7 @@ async function loadFromServer(){
     SERVER.orders=data.orders||[]; SERVER.inquiries=data.inquiries||[]; SERVER.templates=data.templates||[]; SERVER.loaded=true;
     save(LS.serverCache, {orders:SERVER.orders, inquiries:SERVER.inquiries, templates:SERVER.templates});
     buildData(); render();
+    const upd=$("#h-upd"); if(upd) upd.textContent="更新 "+new Date().toTimeString().slice(0,5);
   }catch(e){ toast("サーバ取得に失敗（オフライン表示）"); }
 }
 function apiPost(body){
@@ -549,15 +552,16 @@ function orderName(o){ return o.customer ? esc(o.customer)+" 様" : "＃"+esc(St
 // 楽天の進捗ラベル・2m以上(運賃見積り要)判定
 const RK_PROGRESS_LABEL={100:"注文確認待ち",200:"楽天処理中",300:"発送待ち",400:"変更確定待ち",500:"発送済",600:"入金待ち",700:"入金済"};
 function itemMaxLen(o){ let mx=0; (o.items||[]).forEach(i=>{ const d=parseItem(i.name).dim; if(d){ const p=d.split("×"); const L=Number(p[p.length-1])||0; if(L>mx) mx=L; } }); return mx; }
-function needsFreight(o){ return o.mall==="rakuten" && itemMaxLen(o)>=2000; } // 2m以上＝運賃見積り
+function needsFreight(o){ return o.mall==="rakuten" && itemMaxLen(o)>=1820; } // 2m以上＝運賃見積り（楽天表記の2m=1820）
 function rkProgressLabel(o){ if(o.mall!=="rakuten") return ""; return RK_PROGRESS_LABEL[o.progress] || "注文確認待ち"; }
+function ageDays(o){ const d=new Date(String(o.date||"").replace(" ","T")); return isNaN(d)?0:Math.floor((Date.now()-d.getTime())/86400000); }
 // 配送業者判定：大型宅配便=西濃(2m・要配送確認/メール)、宅配便=佐川(1m・確認不要)、メール便=日本郵便(サンプル)。未取得時は長さで推定(2m以上=西濃)
 function shipCarrier(o){
   const dm=String(o.deliveryMethod||'');
   if(/大型/.test(dm)) return "西濃";
   if(/メール便/.test(dm)) return "日本郵便";
   if(/宅配便/.test(dm)) return "佐川";
-  return itemMaxLen(o)>=2000 ? "西濃" : "佐川";
+  return itemMaxLen(o)>=1820 ? "西濃" : "佐川"; // 未取得(ヤフー等)は長さで推定：2m系(1820〜)=西濃
 }
 // 配送確認メール・配送確認チェックが必要なのは西濃(2m・支店止め/運賃見積り)のみ。佐川/メール便は不要
 function needsShipConfirm(o){ return shipCarrier(o)==="西濃"; }
@@ -657,6 +661,7 @@ function orderCard(o){
       ${o.remarks?'<span class="pill memo memo-on" title="備考: '+esc(o.remarks)+'">📝 備考あり</span>':''}
       ${o.deliveryDate?'<span class="pill date-spec">⏰ '+esc(o.deliveryDate)+' 着指定</span>':''}
       ${(needsFreight(o)&&o.status==="new")?'<span class="pill warn">🚚 運賃見積り(2m〜)</span>':''}
+      ${(o.mall==="yahoo"&&o.status==="new"&&ageDays(o)>=2)?'<span class="pill warn">⚠️ '+ageDays(o)+'日滞留（ヤフーは手動更新）</span>':''}
       ${(o.mall==="rakuten"&&o.status!=="done"&&!o.mailSent&&needsShipConfirm(o))?'<span class="pill mail-wait">📧 メール未送信</span>':''}
       ${(o.status!=="done")?((needsShipConfirm(o)&&!o.shipConfirmed)?'<span class="pill ship-wait">🚚 配送確認</span>':((o.mall==="rakuten"&&!o.paid)?'<span class="pill pay-wait">💰 支払確認</span>':'<span class="pill kakou-ok">✅ 加工OK</span>')):""}
       ${(o.mall==="rakuten"&&o.status==="new")?'<span class="pill prog">📋 '+esc(o.progress&&o.progress!==100?rkProgressLabel(o):"注文確定待ち")+'</span>':''}
@@ -1075,6 +1080,11 @@ function enterApp(email, pass){
   $("#h-sub").textContent = "林材木店 EC ・ "+(email.split("@")[0]);
   buildData(); render();
   if(API_URL) loadFromServer();
+  // 自動更新：3分ごと＋タブ復帰時（ドロワー編集中・タブ非表示はスキップ＝入力を消さない）
+  if(API_URL && !window._autoRefresh){
+    window._autoRefresh = setInterval(()=>{ if(!document.hidden && !state.drawer && CRED) loadFromServer(); }, 180000);
+    document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && !state.drawer && CRED) loadFromServer(); });
+  }
 }
 
 /* =========================================================
