@@ -623,7 +623,8 @@ function kakouRowsFor(o){
     const row={_uid:uid, order:"8",
       customer:(String(o.customer||"").split(/[ 　]/)[0]||(o.mall==="yahoo"?"ヤフー":"楽天"))+"様",
       hinmei:hin, grade:grade,
-      thickness:d[0], width:d[1], length:d[2],
+      thickness:d[0], width:((hin==="F"||hin==="P")?"120":d[1]), length:d[2], // 加工幅は原板120(羽目板103/ﾌﾛｰﾘﾝｸﾞ108→120表記)
+
       qty:String(qty), planned:String(planned), actual:"-",
       seal:"無", danball:"有", remark:rem.filter(Boolean).join(" ")};
     if(/両端直角カット/.test(opt)) row.ryoutan="1";
