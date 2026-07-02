@@ -677,6 +677,29 @@ async function autoKakouSync(){
   }catch(e){ console.warn("加工予定表 登録失敗",e); }
   finally{ _kakouBusy=false; }
 }
+// 送り状の総個口（全商品分の合計）
+function kouguchiTotal(o){
+  let k=0;
+  (o.items||[]).forEach(it=>{ const p=parseItem(it.name); if(!p.dim) return; const d=p.dim.split("×"); const len=Number(d[2])||0; const per=parseInt(p.qty)||0, n=Number(it.qty)||1, total=per*n; if(!total) return; k += len>=1820?Math.ceil(total/10):Math.max(1,Math.ceil(total/40)); });
+  return k||1;
+}
+// 送り状発行用の宛先情報をコピー（西濃/佐川への入力・Claude依頼用）
+function copyShipInfo(){
+  const o=getOrder(state.drawer.id); if(!o) return;
+  const car=shipCarrier(o);
+  const items=(o.items||[]).filter(i=>!/オプション|カット|サンプル/.test(i.name)).map(i=>cleanItem(i.name)+(Number(i.qty)>1?" ×"+i.qty:"")).join(" / ");
+  const L=["【送り状発行】"+car+"　注文:"+o.orderNo];
+  L.push("届け先: "+(o.customer||"（要手入力）")+" 様");
+  L.push("住所/TEL: "+((o.opMemo&&/〒|県|都|府|道|市|区|町|村/.test(o.opMemo))?o.opMemo.replace(/^【[^】]*】\s*/,''):"（モール注文詳細から取得）"));
+  L.push("品名: "+items);
+  L.push("個口: "+kouguchiTotal(o)+"個口");
+  L.push("元着: 元払");
+  if(o.custType==="個人") L.push("受取: 支店止め"+(o.branch?"（"+o.branch+"）":"（要営業所確認）"));
+  if(o.deliveryDate) L.push("配達日指定: "+o.deliveryDate);
+  if(o.remarks) L.push("備考/注意: "+o.remarks);
+  const txt=L.join("\n");
+  (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>toast("📋 送り状情報をコピーしました")).catch(()=>{ prompt("コピーしてください:",txt); });
+}
 async function kakouRegisterNow(){ // ドロワーの手動登録
   const o=getOrder(state.drawer.id); if(!o) return;
   if(!kakouDb||!kakouAuthed){ toast("加工予定表に接続できていません"); return; }
@@ -884,6 +907,9 @@ function openOrderDrawer(id){
       ${kakouRowsFor(o).length?`<div class="prep-line" style="margin:8px 0 0"><span>🪵 加工予定表</span><span class="${o.kakouAdded?'done':'wait'}">${o.kakouAdded?`✅ 登録済み（<a href="${KAKOU_URL}" target="_blank" style="color:inherit">開く↗</a>）`:(kakouReady(o)?'⏳ まもなく自動登録':'加工OKで自動登録されます')}</span></div>
       ${!o.kakouAdded?`<button class="btn ghost" style="margin-top:7px;width:100%" onclick="kakouRegisterNow()">🪵 加工予定表に今すぐ登録（${kakouRowsFor(o).length}行）</button>`:''}`:''}
     </div>
+    <div class="sec-t">送り状発行（${esc(shipCarrier(o))}）</div>
+    <button class="btn ghost" style="width:100%" onclick="copyShipInfo()">🚚 送り状の宛先情報をコピー（${kouguchiTotal(o)}個口）</button>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px">コピー後、Claudeに「<b>${esc(shipCarrier(o))}の送り状発行して</b>」と伝えると${shipCarrier(o)==="西濃"?"カンガルーマジック":"e飛伝Ⅲ"}に入力→印刷ポップアップまで自動。印刷はA5・MFC-J6583CDWでCtrl+P。</div>
     <div class="sec-t">ステータス</div>
     <div class="status-pick" id="o-status">
       ${O_STATUS.map(s=>`<button data-s="${s.k}" class="${o.status===s.k?'active':''}">${s.label}</button>`).join("")}
@@ -1243,7 +1269,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
 });
 // expose for inline onclick
-Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow});
+Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo});
 </script>
 </body>
 </html>
