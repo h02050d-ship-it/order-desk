@@ -325,6 +325,9 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script>
 /* ===========================================================
    受注・問い合わせ管理ツール（林材木店 EC）
@@ -467,6 +470,7 @@ async function loadFromServer(){
     save(LS.serverCache, {orders:SERVER.orders, inquiries:SERVER.inquiries, templates:SERVER.templates});
     buildData(); render();
     const upd=$("#h-upd"); if(upd) upd.textContent="更新 "+new Date().toTimeString().slice(0,5);
+    autoKakouSync(); // 加工OKになった注文を加工予定表へ自動登録
   }catch(e){ toast("サーバ取得に失敗（オフライン表示）"); }
 }
 function apiPost(body){
@@ -568,6 +572,97 @@ function needsShipConfirm(o){ return shipCarrier(o)==="西濃"; }
 // 加工準備：支払確認(楽天=API/ヤフー=当面手動扱い)＋配送確認(西濃のみ手動チェック)が揃えば加工OK
 function isPaidOk(o){ return o.mall==="rakuten" ? !!o.paid : true; }
 function kakouReady(o){ return isPaidOk(o) && (!needsShipConfirm(o) || !!o.shipConfirmed); }
+
+/* ===== 加工予定表（kakou-yotei Firebase）自動入力 =====
+   加工OK（支払＋配送確認済）になった注文を、確認なしで加工予定表に自動登録（人間が後でチェック）。
+   行キーは od_注文ID_行番号 の固定キー → 何度書いても同じ行を上書き＝重複しない */
+const KAKOU_URL="https://h02050d-ship-it.github.io/kakou-yotei/";
+const KAKOU_CFG={apiKey:"AIzaSyBkpsxdYciMiLmsBfHNWRL7OFniSsssQwA",authDomain:"kakou-yotei.firebaseapp.com",databaseURL:"https://kakou-yotei-default-rtdb.firebaseio.com",projectId:"kakou-yotei"};
+let kakouDb=null, kakouAuthed=false, _kakouBusy=false;
+function initKakou(){
+  if(!window.firebase || kakouDb) return;
+  try{
+    firebase.initializeApp(KAKOU_CFG);
+    kakouDb=firebase.database();
+    firebase.auth().onAuthStateChanged(u=>{ kakouAuthed=!!u; if(u) autoKakouSync(); });
+    firebase.auth().signInAnonymously().catch(e=>console.warn("kakou auth失敗",e));
+  }catch(e){ console.warn("kakou init失敗",e); }
+}
+// EC商品名の節表記 → 加工予定表の等級選択肢（-,丸節,小節,特上小,無節,無節特上,生節,B丸節,B無節特上）
+function kakouGradeOf(fushi,bc){
+  const g = /無節特上|特上無節/.test(fushi)?"無節特上"
+        : /特上小|上小節|特上/.test(fushi)?"特上小"
+        : /生節/.test(fushi)?"生節"
+        : /小節|^小$/.test(fushi)?"小節"
+        : /無節|節無/.test(fushi)?"無節"
+        : /節/.test(fushi)?"丸節":"-";
+  if(bc==="B"){ if(g==="丸節")return "B丸節"; if(g==="無節特上")return "B無節特上"; }
+  return g;
+}
+// 注文 → 加工予定表の行（1商品=1行）。品名F/P/S以外（サンプル・オプション行）は対象外
+function kakouRowsFor(o){
+  const rows=[]; const carrier=shipCarrier(o);
+  (o.items||[]).forEach((it,idx)=>{
+    const p=parseItem(it.name);
+    const hin = /フローリング/.test(p.type)?"F" : /羽目板/.test(p.type)?"P" : /スノコ/.test(p.type)?"S" : "";
+    if(!hin || !p.dim) return;
+    const d=p.dim.split("×"); if(d.length<3) return;
+    const per=parseInt(p.qty)||0, n=Number(it.qty)||1, total=per*n;
+    if(!total) return;
+    const len=Number(d[2])||0;
+    let qty,planned;
+    if(len>=1820){ qty=10; planned=Math.ceil(total/10); }                                // 2m系: 10枚1個口（20枚1セット→予定2）
+    else { planned=Math.max(1,Math.ceil(total/40)); qty=Math.ceil(total/planned); }      // 1m系: 40枚まで1個口
+    const opt=String(it.opt||"");
+    const grade=kakouGradeOf(p.fushi,p.grade);
+    const rem=[carrier];
+    if(o.custType==="個人") rem.push((o.branch||"")+"支店止め");
+    if(o.deliveryDate) rem.push(o.deliveryDate.slice(5).replace("-","/")+"着指定");
+    if(p.grade==="B" && !/^B/.test(grade)) rem.push("B級品");
+    const uid=("od_"+String(o.id||o.orderNo)+"_"+idx).replace(/[.#$/\[\]:]/g,"_");
+    const row={_uid:uid, order:"8",
+      customer:(String(o.customer||"").split(/[ 　]/)[0]||(o.mall==="yahoo"?"ヤフー":"楽天"))+"様",
+      hinmei:hin, grade:grade,
+      thickness:d[0], width:d[1], length:d[2],
+      qty:String(qty), planned:String(planned), actual:"-",
+      seal:"無", danball:"有", remark:rem.filter(Boolean).join(" ")};
+    if(/両端直角カット/.test(opt)) row.ryoutan="1";
+    if(/塗装/.test(opt)) row.tosou="1";
+    if(/^B/.test(grade)) row.zaiko="1"; // B級=加工在庫（加工予定表側の自動チェックと同じ）
+    rows.push(row);
+  });
+  return rows;
+}
+async function kakouWrite_(o){
+  const rows=kakouRowsFor(o);
+  for(const r of rows){ await kakouDb.ref("items/"+r._uid).set(r); }
+  o.kakouAdded=true;
+  const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.kakouAdded=true;
+  apiPost({action:"order", id:o.id, kakouAdded:true});
+  return rows.length;
+}
+// 加工OKかつ未登録を自動登録（新規受注・出荷準備中のみ。出荷済/完了は対象外）
+async function autoKakouSync(){
+  if(!kakouDb || !kakouAuthed || _kakouBusy) return;
+  _kakouBusy=true;
+  try{
+    const targets=state.orders.filter(o=>(o.status==="new"||o.status==="preparing") && kakouReady(o) && !o.kakouAdded && kakouRowsFor(o).length);
+    for(const o of targets){
+      const n=await kakouWrite_(o);
+      toast("🪵 加工予定表に自動登録: "+orderName(o)+"（"+n+"行）");
+    }
+    if(targets.length) render();
+  }catch(e){ console.warn("加工予定表 登録失敗",e); }
+  finally{ _kakouBusy=false; }
+}
+async function kakouRegisterNow(){ // ドロワーの手動登録
+  const o=getOrder(state.drawer.id); if(!o) return;
+  if(!kakouDb||!kakouAuthed){ toast("加工予定表に接続できていません"); return; }
+  if(!kakouRowsFor(o).length){ toast("登録対象の商品がありません"); return; }
+  const n=await kakouWrite_(o);
+  toast("🪵 加工予定表に登録しました（"+n+"行）");
+  render(); openOrderDrawer(o.id);
+}
 function getOrder(id){ return state.orders.find(o=>o.id===id); }
 function getInq(id){ return state.inquiries.find(q=>q.id===id); }
 function now(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
@@ -664,6 +759,7 @@ function orderCard(o){
       ${(o.mall==="yahoo"&&o.status==="new"&&ageDays(o)>=2)?'<span class="pill warn">⚠️ '+ageDays(o)+'日滞留（ヤフーは手動更新）</span>':''}
       ${(o.mall==="rakuten"&&o.status!=="done"&&!o.mailSent&&needsShipConfirm(o))?'<span class="pill mail-wait">📧 メール未送信</span>':''}
       ${(o.status!=="done")?((needsShipConfirm(o)&&!o.shipConfirmed)?'<span class="pill ship-wait">🚚 配送確認</span>':((o.mall==="rakuten"&&!o.paid)?'<span class="pill pay-wait">💰 支払確認</span>':'<span class="pill kakou-ok">✅ 加工OK</span>')):""}
+      ${(o.kakouAdded&&o.status!=="done")?'<span class="pill kakou-ok">🪵 予定表済</span>':''}
       ${(o.mall==="rakuten"&&o.status==="new")?'<span class="pill prog">📋 '+esc(o.progress&&o.progress!==100?rkProgressLabel(o):"注文確定待ち")+'</span>':''}
       ${o.hasMsg?'<span class="pill msg">💬 問い合わせ</span>':''}
       ${o.memo?'<span class="pill memo">📝 メモ</span>':''}
@@ -763,6 +859,8 @@ function openOrderDrawer(id){
       <label class="prep-check"><input type="checkbox" id="o-shipconf" ${o.shipConfirmed?'checked':''} onchange="toggleShipConfirm()"> 🚚 配送確認済み（送料・営業所・お届け方法をお客様と確認した）</label>`
       :`<div class="prep-line"><span>🚚 配送</span><span class="done">✅ ${esc(shipCarrier(o))}（1m通常宅配 → 配送確認不要）</span></div>`}
       <div class="prep-result">${kakouReady(o)?'✅ <b>加工OK</b>（加工して良い合図）':(needsShipConfirm(o)?'⏳ 支払と配送確認が揃うと「加工OK」になります':'⏳ 入金が確認できると「加工OK」になります')}</div>
+      ${kakouRowsFor(o).length?`<div class="prep-line" style="margin:8px 0 0"><span>🪵 加工予定表</span><span class="${o.kakouAdded?'done':'wait'}">${o.kakouAdded?`✅ 登録済み（<a href="${KAKOU_URL}" target="_blank" style="color:inherit">開く↗</a>）`:(kakouReady(o)?'⏳ まもなく自動登録':'加工OKで自動登録されます')}</span></div>
+      ${!o.kakouAdded?`<button class="btn ghost" style="margin-top:7px;width:100%" onclick="kakouRegisterNow()">🪵 加工予定表に今すぐ登録（${kakouRowsFor(o).length}行）</button>`:''}`:''}
     </div>
     <div class="sec-t">ステータス</div>
     <div class="status-pick" id="o-status">
@@ -812,6 +910,7 @@ function toggleShipConfirm(){
   if(API_URL) apiPost({action:"order", id:o.id, shipConfirmed:o.shipConfirmed});
   render(); openOrderDrawer(o.id);
   toast(o.shipConfirmed?"配送確認済みにしました":"配送確認を外しました");
+  autoKakouSync(); // チェックで加工OKになったら即・加工予定表へ
 }
 function toggleMailSent(){
   const o=getOrder(state.drawer.id); if(!o) return;
@@ -1079,6 +1178,7 @@ function enterApp(email, pass){
   $("#gate").classList.add("hidden"); $("#app").classList.remove("hidden");
   $("#h-sub").textContent = "林材木店 EC ・ "+(email.split("@")[0]);
   buildData(); render();
+  initKakou(); // 加工予定表Firebaseへ匿名認証（自動登録用）
   if(API_URL) loadFromServer();
   // 自動更新：3分ごと＋タブ復帰時（ドロワー編集中・タブ非表示はスキップ＝入力を消さない）
   if(API_URL && !window._autoRefresh){
@@ -1121,7 +1221,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
 });
 // expose for inline onclick
-Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,toggleShipConfirm,toggleMailSent});
+Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow});
 </script>
 </body>
 </html>
