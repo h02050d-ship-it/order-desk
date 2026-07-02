@@ -633,13 +633,34 @@ function kakouRowsFor(o){
   });
   return rows;
 }
+// 既存行との重複判定：スタッフ手入力（例「楽天長谷川」）と同じ内容なら登録しない
+// 一致条件＝取引先に姓が含まれる ＆ 品名・厚・長が同じ（幅・等級は手入力ゆれがあるため見ない）
+async function kakouExisting_(){
+  const snap=await kakouDb.ref("items").once("value");
+  return Object.values(snap.val()||{});
+}
+function kakouDupOf_(row, existing){
+  const sur=String(row.customer||"").replace(/様$/,"");
+  if(!sur) return null;
+  return existing.find(e=>{
+    if(String(e._uid||"").indexOf("od_")===0) return false; // 自動登録行は固定キー上書きなので対象外
+    if(e.archived) return false;                              // 出荷完了(アーカイブ)は対象外
+    return String(e.customer||"").includes(sur)
+        && String(e.hinmei)===String(row.hinmei)
+        && String(e.thickness)===String(row.thickness)
+        && String(e.length)===String(row.length);
+  })||null;
+}
 async function kakouWrite_(o){
-  const rows=kakouRowsFor(o);
+  const all=kakouRowsFor(o);
+  const existing=await kakouExisting_();
+  const rows=all.filter(r=>!kakouDupOf_(r,existing));
+  const skipped=all.length-rows.length;
   for(const r of rows){ await kakouDb.ref("items/"+r._uid).set(r); }
   o.kakouAdded=true;
   const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.kakouAdded=true;
   apiPost({action:"order", id:o.id, kakouAdded:true});
-  return rows.length;
+  return {written:rows.length, skipped:skipped};
 }
 // 加工OKかつ未登録を自動登録（新規受注・出荷準備中のみ。出荷済/完了は対象外）
 async function autoKakouSync(){
@@ -648,8 +669,8 @@ async function autoKakouSync(){
   try{
     const targets=state.orders.filter(o=>(o.status==="new"||o.status==="preparing") && !o.tracking && kakouReady(o) && !o.kakouAdded && kakouRowsFor(o).length); // 送り状あり=加工済なので対象外
     for(const o of targets){
-      const n=await kakouWrite_(o);
-      toast("🪵 加工予定表に自動登録: "+orderName(o)+"（"+n+"行）");
+      const r=await kakouWrite_(o);
+      toast("🪵 加工予定表: "+orderName(o)+" "+(r.written?"自動登録"+r.written+"行":"")+(r.skipped?"（既存行あり"+r.skipped+"件スキップ）":""));
     }
     if(targets.length) render();
   }catch(e){ console.warn("加工予定表 登録失敗",e); }
@@ -659,8 +680,8 @@ async function kakouRegisterNow(){ // ドロワーの手動登録
   const o=getOrder(state.drawer.id); if(!o) return;
   if(!kakouDb||!kakouAuthed){ toast("加工予定表に接続できていません"); return; }
   if(!kakouRowsFor(o).length){ toast("登録対象の商品がありません"); return; }
-  const n=await kakouWrite_(o);
-  toast("🪵 加工予定表に登録しました（"+n+"行）");
+  const r=await kakouWrite_(o);
+  toast("🪵 加工予定表: "+(r.written?"登録"+r.written+"行":"登録なし")+(r.skipped?"（既存行あり"+r.skipped+"件スキップ）":""));
   render(); openOrderDrawer(o.id);
 }
 function getOrder(id){ return state.orders.find(o=>o.id===id); }
