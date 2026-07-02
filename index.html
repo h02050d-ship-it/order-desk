@@ -599,8 +599,11 @@ function kakouGradeOf(fushi,bc){
   if(bc==="B"){ if(g==="丸節")return "B丸節"; if(g==="無節特上")return "B無節特上"; }
   return g;
 }
-// 注文 → 加工予定表の行（1商品=1行）。品名F/P/S以外（サンプル・オプション行）は対象外
+// テスト注文（注文番号がTEST-…）は加工予定表の対象外
+function isTestOrder(o){ return /(^|:)?TEST-/i.test(String(o.orderNo||"")) || /TEST-/i.test(String(o.id||"")); }
+// 注文 → 加工予定表の行（1商品=1行）。品名F/P/S以外（サンプル・オプション行）は対象外。テスト注文は空
 function kakouRowsFor(o){
+  if(isTestOrder(o)) return [];
   const rows=[]; const carrier=shipCarrier(o);
   (o.items||[]).forEach((it,idx)=>{
     const p=parseItem(it.name);
@@ -668,7 +671,7 @@ async function autoKakouSync(){
   if(!kakouDb || !kakouAuthed || _kakouBusy) return;
   _kakouBusy=true;
   try{
-    const targets=state.orders.filter(o=>(o.status==="new"||o.status==="preparing") && !o.tracking && kakouReady(o) && !o.kakouAdded && kakouRowsFor(o).length); // 送り状あり=加工済なので対象外
+    const targets=state.orders.filter(o=>!isTestOrder(o) && (o.status==="new"||o.status==="preparing") && !o.tracking && kakouReady(o) && !o.kakouAdded && kakouRowsFor(o).length); // テスト注文・送り状あり(加工済)は対象外
     for(const o of targets){
       const r=await kakouWrite_(o);
       toast("🪵 加工予定表: "+orderName(o)+" "+(r.written?"自動登録"+r.written+"行":"")+(r.skipped?"（既存行あり"+r.skipped+"件スキップ）":""));
