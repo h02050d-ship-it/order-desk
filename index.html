@@ -822,14 +822,10 @@ function orderCard(o){
   el.innerHTML=`
     <div class="top">
       <span class="badge ${m.cls}">${m.label}</span>
-      <span class="ono">${esc(o.orderNo)}</span>
+      <span class="cust" style="margin:0">${orderName(o)}</span>
+      <span class="date" style="margin-left:auto">${esc(o.date.slice(5))}</span>
     </div>
-    <div class="cust">${orderName(o)}</div>
     <div class="items">${itemsSummaryHTML(o.items)}</div>
-    <div class="foot">
-      <span class="price">${yen(o.total)}</span>
-      <span class="date">${esc(o.date.slice(5))}</span>
-    </div>
     <div class="flagrow">
       ${o.custType?'<span class="pill cust-'+(o.custType==="法人"?"corp":"indiv")+'">'+(o.custType==="法人"?"🏢 法人":("🏠 個人"+(o.branch?"・"+esc(o.branch)+"支店止め":"（支店止め）")))+'</span>':''}
       ${opts.length?'<span class="pill opt">⚙ '+esc(opts.join("・"))+'</span>':'<span class="pill opt-none">オプションなし</span>'}
