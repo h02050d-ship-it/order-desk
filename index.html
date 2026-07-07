@@ -84,17 +84,25 @@
   .card .ono-link{font-size:11px; color:var(--brand); font-weight:700; margin-left:auto; text-decoration:none; white-space:nowrap; padding:2px 4px; border-radius:6px}
   .card .ono-link:hover{text-decoration:underline; background:var(--panel2)}
   .card .cust{font-size:14px; font-weight:700; margin-bottom:2px}
-  .card .items{font-size:12px; color:var(--muted); display:flex; flex-direction:column; gap:3px}
-  .card .i-line{display:flex; align-items:center; gap:6px; padding:2px 7px; border-radius:7px; white-space:nowrap; overflow:hidden}
-  .card .i-line .i-count{margin-left:auto; flex:0 0 auto; background:var(--panel2); border:1px solid var(--line2); border-radius:6px; padding:0 7px; font-size:11px; font-weight:700; color:var(--ink)}
-  .card .i-line .i-count b{color:var(--brand)}
-  /* B級/C級は行背景なし・.i-bcタグのみで表示 */
-  .i-bc{font-size:10px; font-weight:800; color:#fff; background:#8e24aa; border-radius:5px; padding:1px 5px; flex:0 0 auto}
-  .i-line.ic .i-bc{background:#d2691e}
-  .i-cut{font-size:10px; font-weight:800; color:#c2185b; background:#fce4ec; border:1px solid #f8bbd0; border-radius:5px; padding:0 5px; flex:0 0 auto}
-  .i-len.cut{background:#fce4ec; color:#c2185b; border-radius:4px; padding:0 3px; font-weight:800}
-  [data-theme="dark"] .i-cut{background:#3a1f2c; color:#ff8fb1; border-color:#5a3345}
-  [data-theme="dark"] .i-len.cut{background:#3a1f2c; color:#ff8fb1}
+  /* 商品行=2行構成(④): 1行目=F/Pチップ+寸法、2行目=等級/B級/加工タグ、右端=×数量+入数 */
+  .card .items{font-size:12px; color:var(--muted); display:flex; flex-direction:column}
+  .i-item{display:flex; align-items:center; gap:8px; padding:4px 0; border-bottom:1px dashed var(--line)}
+  .i-item:last-child{border-bottom:none}
+  .i-main{min-width:0}
+  .i-l1{display:flex; align-items:center; gap:7px; font-size:13px; font-weight:700; color:var(--ink); white-space:nowrap; overflow:hidden}
+  .i-hin{flex:0 0 auto; width:18px; height:18px; border-radius:5px; color:#fff; font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center}
+  .i-dim{font-variant-numeric:tabular-nums; letter-spacing:.01em}
+  .i-len.cut{background:#fce4ec; color:#c2185b; border-radius:4px; padding:0 3px}
+  .i-l2{display:flex; gap:5px; margin-top:2px; flex-wrap:wrap}
+  .i-g{font-size:10.5px; font-weight:800; border:1px solid; border-radius:4px; padding:0 5px}
+  .i-tag{font-size:10.5px; font-weight:800; border-radius:4px; padding:0 5px; border:1px solid var(--line2); color:var(--muted); background:var(--panel2)}
+  .i-tag.bc{background:#f3e8fa; border-color:#dcc6ef; color:#7b1fa2}
+  .i-tag.bc.c{background:#fdeee4; border-color:#f0c49c; color:#b34700}
+  .i-tag.cut{background:#fce4ec; border-color:#f8bbd0; color:#c2185b}
+  .i-cnt{margin-left:auto; flex:0 0 auto; text-align:right; font-weight:800; font-size:14px; color:var(--ink); font-variant-numeric:tabular-nums}
+  .i-cnt small{display:block; font-size:10px; color:var(--muted); font-weight:600}
+  [data-theme="dark"] .i-tag.bc{background:#2a1f36; border-color:#4a3760; color:#c99ae0}
+  [data-theme="dark"] .i-tag.cut,[data-theme="dark"] .i-len.cut{background:#3a1f2c; border-color:#5a3345; color:#ff8fb1}
   .i-head{font-weight:700}
   .i-type{display:inline-block; padding:1px 7px; border-radius:6px; font-weight:800; font-size:11.5px; line-height:1.5}
   .i-dim{color:var(--ink); font-weight:700}
@@ -555,32 +563,46 @@ function itemHTML(name, qty){
   if(qty>1) h+=` <span class="i-mult">×${qty}</span>`;
   return h;
 }
-// カード用: 1商品1行。列を統一（品種チップ→寸法→等級→B級/加工タグ→右端に入数×数量）。B級行だけ紫背景
-// 両端カット対象の行は等級の後ろに「両端カット」タグ＋長さの背景をピンクに
+// カード用（2行構成）: 1行目=品種チップ(加工予定表と同じF/P/S色)+寸法、2行目=等級(加工予定表の色)/B級/加工タグ、右端=×数量+入数
+// 等級名は加工予定表準拠に統一（節有→丸節 等）。カット対象は長さピンク＋タグ
+const KAKOU_GRADE_COLORS={"丸節":"#d32f2f","小節":"#ef6c00","特上小":"#2e7d32","無節":"#1565c0","無節特上":"#6a1b9a","生節":"#795548"};
+function hinChip(type,thick){ // 加工予定表のbgMapと同じ配色
+  const hin=/フローリング/.test(type)?"F":/羽目板/.test(type)?"P":/スノコ/.test(type)?"S":"";
+  if(!hin) return null;
+  const bg=hin==="F"?(String(thick)==="12"?"#f9a825":"#d32f2f"):hin==="P"?"#1565c0":"#6a1b9a";
+  return {hin,bg};
+}
 function itemLineHTML(it){
   const p=parseItem(it.name);
   const n=Number(it.qty)||1;
   const opt=String(it.opt||"");
   const cut=/両端直角カット/.test(opt), tosou=/塗装/.test(opt);
   if(!p.wood && !p.type && !p.dim){
-    return `<div class="i-line"><span class="i-name">${esc(cleanItem(it.name))}</span><span class="i-count">${n>1?"×"+n:"&nbsp;"}</span></div>`;
+    return `<div class="i-item"><div class="i-main"><div class="i-l1"><span class="i-name">${esc(cleanItem(it.name))}</span></div></div><div class="i-cnt">×${n}</div></div>`;
   }
   const thick=(p.dim.match(/^(\d{1,3})/)||[])[1]||"";
   const isB=p.grade==="B", isC=p.grade==="C";
-  let h=`<div class="i-line${isB?" ib":""}${isC?" ic":""}">`;
-  if(p.type){ const ch=typeChip(p.type,thick); h+=`<span class="i-type" style="background:${ch.bg};color:${ch.fg}">${esc(p.wood+p.type)}</span>`; }
-  else if(p.wood){ h+=`<span class="i-head">${esc(p.wood)}</span>`; }
+  const ch=hinChip(p.type,thick);
+  let dimHtml="";
   if(p.dim){
     const parts=p.dim.split("×"); const len=parts.pop();
-    if(parts.length===2 && /フローリング|羽目板/.test(p.type)) parts[1]="120"; // 幅は原板120表記(羽目板103/ﾌﾛｰﾘﾝｸﾞ108→120)
-    h+=`<span class="i-dim">${esc(parts.join("×"))}×<span class="i-len${cut?" cut":""}">${esc(len)}</span></span>`;
+    if(parts.length===2 && /フローリング|羽目板/.test(p.type)) parts[1]="120"; // 幅は原板120表記
+    dimHtml=`<span class="i-dim">${esc(parts.join("×"))}×<span class="i-len${cut?" cut":""}">${esc(len)}</span></span>`;
   }
-  if(p.fushi) h+=`<span class="i-fushi" style="color:${gradeColor(p.fushi)}">${esc(p.fushi)}</span>`;
-  if(isB||isC) h+=`<span class="i-bc">${p.grade}級</span>`;
-  if(cut) h+=`<span class="i-cut">両端カット</span>`;
-  if(tosou) h+=`<span class="i-cut">塗装</span>`;
-  h+=`<span class="i-count">${p.qty?esc(p.qty):""}${n>1?' <b>×'+n+'</b>':""}</span></div>`;
-  return h;
+  const gname=kakouGradeOf(p.fushi,"");            // 加工予定表準拠の等級名(節有→丸節)
+  const gc=KAKOU_GRADE_COLORS[gname]||"#6a5a44";
+  let tags="";
+  if(gname && gname!=="-") tags+=`<span class="i-g" style="color:${gc};background:${gc}14;border-color:${gc}44">${esc(gname)}</span>`;
+  if(isB||isC) tags+=`<span class="i-tag bc${isC?" c":""}">${p.grade}級</span>`;
+  if(cut) tags+=`<span class="i-tag cut">✂ 両端カット</span>`;
+  if(tosou) tags+=`<span class="i-tag cut">🎨 塗装</span>`;
+  return `<div class="i-item">
+    <div class="i-main">
+      <div class="i-l1">${ch?`<span class="i-hin" style="background:${ch.bg}">${ch.hin}</span>`:(p.wood?`<span class="i-name">${esc(p.wood+p.type)}</span>`:"")}${dimHtml}</div>
+      ${tags?`<div class="i-l2">${tags}</div>`:""}
+    </div>
+    <div class="i-cnt">×${n}<small>${p.qty?esc(p.qty):""}</small></div>
+  </div>`;
 }
 function itemsSummaryHTML(items){ return (items||[]).map(itemLineHTML).join(''); }
 function orderName(o){ return o.customer ? esc(o.customer)+" 様" : "＃"+esc(String(o.orderNo||"").split("-").pop()); }
