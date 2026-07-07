@@ -88,10 +88,7 @@
   .card .i-line{display:flex; align-items:center; gap:6px; padding:2px 7px; border-radius:7px; white-space:nowrap; overflow:hidden}
   .card .i-line .i-count{margin-left:auto; flex:0 0 auto; background:var(--panel2); border:1px solid var(--line2); border-radius:6px; padding:0 7px; font-size:11px; font-weight:700; color:var(--ink)}
   .card .i-line .i-count b{color:var(--brand)}
-  .card .i-line.ib{background:#f3e8fa; border:1px solid #e2ccf3}
-  .card .i-line.ic{background:#fdeee4; border:1px solid #f0c49c}
-  [data-theme="dark"] .card .i-line.ib{background:#2a1f36; border-color:#4a3760}
-  [data-theme="dark"] .card .i-line.ic{background:#382818; border-color:#5e4530}
+  /* B級/C級は行背景なし・.i-bcタグのみで表示 */
   .i-bc{font-size:10px; font-weight:800; color:#fff; background:#8e24aa; border-radius:5px; padding:1px 5px; flex:0 0 auto}
   .i-line.ic .i-bc{background:#d2691e}
   .i-cut{font-size:10px; font-weight:800; color:#c2185b; background:#fce4ec; border:1px solid #f8bbd0; border-radius:5px; padding:0 5px; flex:0 0 auto}
@@ -575,6 +572,7 @@ function itemLineHTML(it){
   else if(p.wood){ h+=`<span class="i-head">${esc(p.wood)}</span>`; }
   if(p.dim){
     const parts=p.dim.split("×"); const len=parts.pop();
+    if(parts.length===2 && /フローリング|羽目板/.test(p.type)) parts[1]="120"; // 幅は原板120表記(羽目板103/ﾌﾛｰﾘﾝｸﾞ108→120)
     h+=`<span class="i-dim">${esc(parts.join("×"))}×<span class="i-len${cut?" cut":""}">${esc(len)}</span></span>`;
   }
   if(p.fushi) h+=`<span class="i-fushi" style="color:${gradeColor(p.fushi)}">${esc(p.fushi)}</span>`;
@@ -828,7 +826,6 @@ function orderCard(o){
     <div class="items">${itemsSummaryHTML(o.items)}</div>
     <div class="flagrow">
       ${o.custType?'<span class="pill cust-'+(o.custType==="法人"?"corp":"indiv")+'">'+(o.custType==="法人"?"🏢 法人":("🏠 個人"+(o.branch?"・"+esc(o.branch)+"支店止め":"（支店止め）")))+'</span>':''}
-      ${opts.length?'<span class="pill opt">⚙ '+esc(opts.join("・"))+'</span>':'<span class="pill opt-none">オプションなし</span>'}
       ${o.remarks?'<span class="pill memo memo-on" title="備考: '+esc(o.remarks)+'">📝 備考あり</span>':''}
       ${o.deliveryDate?'<span class="pill date-spec">⏰ '+esc(o.deliveryDate)+' 着指定</span>':''}
       ${(needsFreight(o)&&o.status==="new")?'<span class="pill warn">🚚 運賃見積り(2m〜)</span>':''}
