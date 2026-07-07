@@ -84,7 +84,8 @@
   .card .ono-link{font-size:11px; color:var(--brand); font-weight:700; margin-left:auto; text-decoration:none; white-space:nowrap; padding:2px 4px; border-radius:6px}
   .card .ono-link:hover{text-decoration:underline; background:var(--panel2)}
   .card .cust{font-size:14px; font-weight:700; margin-bottom:2px}
-  .card .items{font-size:12px; color:var(--muted); line-height:1.5; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden}
+  .card .items{font-size:12px; color:var(--muted); line-height:1.6}
+  .card .i-line{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
   .i-head{font-weight:700}
   .i-type{display:inline-block; padding:1px 7px; border-radius:6px; font-weight:800; font-size:11.5px; line-height:1.5}
   .i-dim{color:var(--ink); font-weight:700}
@@ -101,12 +102,12 @@
   .col .done-card:hover{opacity:.85}
   .col .done-card .nextbtn{display:none}
   /* B級品・C級品は背景色で一目で分かるように */
-  .card.bgrade{background:#fff7e6; border-color:#f3d488; border-left:4px solid #e8920c}
+  .card.bgrade{background:#f4ecfa; border-color:#dcc6ef; border-left:4px solid #8e24aa}
   .card.cgrade{background:#fdeee4; border-color:#f0c49c; border-left:4px solid #d2691e}
-  [data-theme="dark"] .card.bgrade{background:#33290f; border-color:#5a4a1e; border-left-color:#e0a83c}
+  [data-theme="dark"] .card.bgrade{background:#2a1f36; border-color:#4a3760; border-left-color:#a86fd0}
   [data-theme="dark"] .card.cgrade{background:#382818; border-color:#5e4530; border-left-color:#d2691e}
   .card .gtag{font-size:10px; font-weight:800; color:#fff; border-radius:5px; padding:1px 6px; margin-left:6px; vertical-align:middle}
-  .card .gtag.b{background:#e8920c} .card .gtag.c{background:#d2691e}
+  .card .gtag.b{background:#8e24aa} .card .gtag.c{background:#d2691e}
   .card .flagrow{display:flex; gap:6px; margin-top:7px; flex-wrap:wrap}
   .pill{font-size:10.5px; border-radius:20px; padding:2px 8px; font-weight:700; border:1px solid var(--line2)}
   .pill.warn{background:#fdecec; color:#c0392b; border-color:#f5c6c2}
@@ -551,7 +552,7 @@ function itemHTML(name, qty){
   if(qty>1) h+=` <span class="i-mult">×${qty}</span>`;
   return h;
 }
-function itemsSummaryHTML(items){ return (items||[]).map(i=>itemHTML(i.name,i.qty)).join('<span class="i-sep">／</span>'); }
+function itemsSummaryHTML(items){ return (items||[]).map(i=>'<div class="i-line">'+itemHTML(i.name,i.qty)+'</div>').join(''); } // 1商品1行
 function orderName(o){ return o.customer ? esc(o.customer)+" 様" : "＃"+esc(String(o.orderNo||"").split("-").pop()); }
 // 楽天の進捗ラベル・2m以上(運賃見積り要)判定
 const RK_PROGRESS_LABEL={100:"注文確認待ち",200:"楽天処理中",300:"発送待ち",400:"変更確定待ち",500:"発送済",600:"入金待ち",700:"入金済"};
