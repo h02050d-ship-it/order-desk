@@ -610,6 +610,11 @@ function orderName(o){ return o.customer ? esc(o.customer)+" 様" : "＃"+esc(St
 const RK_PROGRESS_LABEL={100:"注文確認待ち",200:"楽天処理中",300:"発送待ち",400:"変更確定待ち",500:"発送済",600:"入金待ち",700:"入金済"};
 function itemMaxLen(o){ let mx=0; (o.items||[]).forEach(i=>{ const d=parseItem(i.name).dim; if(d){ const p=d.split("×"); const L=Number(p[p.length-1])||0; if(L>mx) mx=L; } }); return mx; }
 function needsFreight(o){ return o.mall==="rakuten" && itemMaxLen(o)>=1820; } // 2m以上＝運賃見積り（楽天表記の2m=1820）
+// 運賃ツール連携URL（届け先住所＋都道府県＋長さ区分＋束数を渡して自動計算・営業所検索）
+const FARE_URL="https://h02050d-ship-it.github.io/fare-calculator/";
+function lengthClass(len){ return len>=4000?4:len>=3000?3:len>=1820?2:1; }
+function sokuTaba(o){ let t=0; (o.items||[]).forEach(it=>{const p=parseItem(it.name); if(!p.dim) return; const d=p.dim.split("×"); const len=Number(d[2])||0; const per=parseInt(p.qty)||0,n=Number(it.qty)||1,tot=per*n; if(!tot) return; t+=Math.ceil(tot/(len<1820?20:10));}); return t||1; }
+function fareUrl(o){ const u=new URL(FARE_URL); if(o.shipPref)u.searchParams.set('pref',o.shipPref); u.searchParams.set('len',lengthClass(itemMaxLen(o))); u.searchParams.set('qty',sokuTaba(o)); if(o.shipAddr)u.searchParams.set('addr',o.shipAddr); return u.toString(); }
 function rkProgressLabel(o){ if(o.mall!=="rakuten") return ""; return RK_PROGRESS_LABEL[o.progress] || "注文確認待ち"; }
 function ageDays(o){ const d=new Date(String(o.date||"").replace(" ","T")); return isNaN(d)?0:Math.floor((Date.now()-d.getTime())/86400000); }
 // 配送業者判定：大型宅配便=西濃(2m・要配送確認/メール)、宅配便=佐川(1m・確認不要)、メール便=日本郵便(サンプル)。未取得時は長さで推定(2m以上=西濃)
@@ -958,6 +963,12 @@ function openOrderDrawer(id){
       ${kakouRowsFor(o).length?`<div class="prep-line" style="margin:8px 0 0"><span>🪵 加工予定表</span><span class="${o.kakouAdded?'done':'wait'}">${o.kakouAdded?`✅ 登録済み（<a href="${KAKOU_URL}" target="_blank" style="color:inherit">開く↗</a>）`:(kakouReady(o)?'⏳ まもなく自動登録':'加工OKで自動登録されます')}</span></div>
       ${!o.kakouAdded?`<button class="btn ghost" style="margin-top:7px;width:100%" onclick="kakouRegisterNow()">🪵 加工予定表に今すぐ登録（${kakouRowsFor(o).length}行）</button>`:''}`:''}
     </div>
+    ${needsFreight(o)?`<div class="sec-t">運賃・営業所（2m以上は送料確認要）</div>
+    <div class="prep-box">
+      ${o.shipAddr?`<div class="prep-line"><span>📍 届け先</span><span style="text-align:right">〒${esc(o.shipZip)}<br>${esc(o.shipAddr)}</span></div>`:`<div style="font-size:12px;color:var(--muted)">届け先住所は未取得（次回取込で反映されます）</div>`}
+      <a class="btn primary" href="${fareUrl(o)}" target="_blank" style="display:block;text-align:center;margin-top:8px;text-decoration:none">🧮 運賃ツールで送料計算＋営業所検索</a>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">住所・都道府県・長さ・束数を渡して開きます。ツール側で送料・最寄り営業所・配送確認メール文面が自動表示。${o.custType==="個人"?'<b style="color:#c0392b">個人＝支店止めなので営業所を確認</b>':""}</div>
+    </div>`:""}
     <div class="sec-t">送り状発行（${esc(shipCarrier(o))}）</div>
     <button class="btn ghost" style="width:100%" onclick="copyShipInfo()">🚚 送り状の宛先情報をコピー（${kouguchiTotal(o)}個口）</button>
     <div style="font-size:11px;color:var(--muted);margin-top:6px">コピー後、Claudeに「<b>${esc(shipCarrier(o))}の送り状発行して</b>」と伝えると${shipCarrier(o)==="西濃"?"カンガルーマジック":"e飛伝Ⅲ"}に入力→印刷ポップアップまで自動。印刷はA5・MFC-J6583CDWでCtrl+P。</div>
