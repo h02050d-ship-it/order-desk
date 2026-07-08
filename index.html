@@ -678,13 +678,16 @@ function kakouRowsFor(o){
     else { planned=Math.max(1,Math.ceil(total/40)); qty=Math.ceil(total/planned); }      // 1m系: 40枚まで1個口
     const opt=String(it.opt||"");
     const grade=kakouGradeOf(p.fushi,p.grade);
-    const rem=[carrier];
-    if(o.custType==="個人") rem.push((o.branch||"")+"支店止め");
+    const rem=[];  // 西濃/佐川は配送列に入れるので備考には書かない
+    if(o.custType==="個人") rem.push((o.branch||"")+"支店止め");  // 支店名(あれば)＋支店止め
     if(o.deliveryDate) rem.push(o.deliveryDate.slice(5).replace("-","/")+"着指定");
     if(p.grade==="B" && !/^B/.test(grade)) rem.push("B級品");
+    const pre=o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":"ネット";  // 名前プレフィックス(様なし)
+    const sur=String(o.customer||"").split(/[ 　]/)[0]||"";
+    const carVal=carrier==="西濃"?"西濃":carrier==="佐川"?"佐川":"";  // 配送列
     const uid=("od_"+String(o.id||o.orderNo)+"_"+idx).replace(/[.#$/\[\]:]/g,"_");
     const row={_uid:uid, order:"8",
-      customer:(String(o.customer||"").split(/[ 　]/)[0]||(o.mall==="yahoo"?"ヤフー":"楽天"))+"様",
+      customer:pre+sur, carrier:carVal,
       hinmei:hin, grade:grade,
       thickness:d[0], width:((hin==="F"||hin==="P")?"120":d[1]), length:d[2], // 加工幅は原板120(羽目板103/ﾌﾛｰﾘﾝｸﾞ108→120表記)
 
