@@ -615,6 +615,16 @@ const FARE_URL="https://h02050d-ship-it.github.io/fare-calculator/";
 function lengthClass(len){ return len>=4000?4:len>=3000?3:len>=1820?2:1; }
 function sokuTaba(o){ let t=0; (o.items||[]).forEach(it=>{const p=parseItem(it.name); if(!p.dim) return; const d=p.dim.split("×"); const len=Number(d[2])||0; const per=parseInt(p.qty)||0,n=Number(it.qty)||1,tot=per*n; if(!tot) return; t+=Math.ceil(tot/(len<1820?20:10));}); return t||1; }
 function fareUrl(o){ const u=new URL(FARE_URL); if(o.shipPref)u.searchParams.set('pref',o.shipPref); u.searchParams.set('len',lengthClass(itemMaxLen(o))); u.searchParams.set('qty',sokuTaba(o)); if(o.shipAddr)u.searchParams.set('addr',o.shipAddr); return u.toString(); }
+function loadFareInline(btn){
+  const box=btn.parentElement.querySelector('.fare-inline'); if(!box) return;
+  if(box.dataset.loaded){ box.style.display=(box.style.display==='none')?'block':'none'; return; }
+  btn.textContent='🧮 計算中…';
+  const f=document.createElement('iframe');
+  f.src=btn.dataset.fare; f.setAttribute('scrolling','no');
+  f.style.cssText='width:100%;border:1px solid var(--line,#ddd);border-radius:8px;height:140px;background:#fff';
+  f.onload=function(){ try{ const h=f.contentDocument.body.scrollHeight; if(h>40) f.style.height=(h+10)+'px'; }catch(e){ f.style.height='420px'; } btn.textContent='🧮 運賃・営業所（再計算/開閉）'; };
+  box.appendChild(f); box.dataset.loaded='1';
+}
 function rkProgressLabel(o){ if(o.mall!=="rakuten") return ""; return RK_PROGRESS_LABEL[o.progress] || "注文確認待ち"; }
 function ageDays(o){ const d=new Date(String(o.date||"").replace(" ","T")); return isNaN(d)?0:Math.floor((Date.now()-d.getTime())/86400000); }
 // 配送業者判定：大型宅配便=西濃(2m・要配送確認/メール)、宅配便=佐川(1m・確認不要)、メール便=日本郵便(サンプル)。未取得時は長さで推定(2m以上=西濃)
@@ -982,9 +992,10 @@ function openOrderDrawer(id){
     ${needsFreight(o)?`<div class="sec-t">運賃・営業所（2m以上は送料確認要）</div>
     <div class="prep-box">
       ${o.shipAddr?`<div class="prep-line"><span>📍 届け先</span><span style="text-align:right">〒${esc(o.shipZip)}<br>${esc(o.shipAddr)}</span></div>`:`<div style="font-size:12px;color:var(--muted)">届け先住所は未取得（次回取込で反映されます）</div>`}
-      <a class="btn primary" href="${fareUrl(o)}" target="_blank" style="display:block;text-align:center;margin-top:8px;text-decoration:none">🧮 運賃ツールで送料計算＋営業所検索</a>
+      <button class="btn primary" style="width:100%;margin-top:8px" data-fare="${fareUrl(o)}&embed=1" onclick="loadFareInline(this)">🧮 運賃ツールで送料計算＋営業所検索</button>
+      <div class="fare-inline" style="margin-top:8px"></div>
       ${o.custType==="個人"?`<div class="prep-line" style="margin-top:6px"><span>🏢 支店止め</span><span class="${o.branch?'done':'wait'}">${o.branch?esc(o.branch)+"支店止め（自動判定）":"最寄り営業所を判定中…"}</span></div>`:""}
-      <div style="font-size:11px;color:var(--muted);margin-top:6px">住所・都道府県・長さ・束数を渡して開きます。ツール側で送料・営業所・配送確認メール文面が自動表示。</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">押すと裏で運賃ツールを実行し、送料・営業所をこの下に表示します（別タブは開きません）。</div>
     </div>`:""}
     <div class="sec-t">送り状発行（${esc(shipCarrier(o))}）</div>
     ${shipCarrier(o)==="西濃"?`
@@ -1354,7 +1365,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
 });
 // expose for inline onclick
-Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer});
+Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline});
 </script>
 </body>
 </html>
