@@ -770,23 +770,13 @@ function copyShipInfo(){
 async function seinoIssueFromDrawer(){
   const o=getOrder(state.drawer.id); if(!o) return;
   const addr=(o.shipAddr&&/[都道府県市区町村]/.test(o.shipAddr))?o.shipAddr:(o.opMemo||"");
-  if(!confirm("【西濃で送り状発行】\n\n届け先: "+(o.customer||"")+"\n〒"+(o.shipZip||"?")+" "+(addr||"住所未取得")+"\n個口: "+kouguchiTotal(o)+"個口\n\n⚠️ 現在テスト環境です（実発送には使えません）。\n発行後、送り状PDFを開きます。印刷はご自身で（A5・手差しトレイ推奨）。よろしいですか？")) return;
+  if(!confirm("【西濃で送り状発行＋印刷】\n\n届け先: "+(o.customer||"")+"\n〒"+(o.shipZip||"?")+" "+(addr||"住所未取得")+"\n個口: "+kouguchiTotal(o)+"個口\n\n⚠️ 現在テスト環境です（実発送には使えません）。\nボタンを押すと出荷登録し、会社PCの HL-L2375DW でA5印刷します。よろしいですか？")) return;
   toast("西濃で発行中…");
   try{
     const u=new URL(API_URL); u.searchParams.set("action","seinoissue"); u.searchParams.set("id",o.id); u.searchParams.set("email",CRED.email); u.searchParams.set("pass",CRED.pass);
     const res=await fetch(u.toString()).then(r=>r.json());
-    if(!res.ok){ toast("発行失敗: "+(res.error||res.raw||"")); return; }
-    o.seinoOkurijoNo=res.okurijoNo;
-    toast("✅ 送り状番号 "+res.okurijoNo+" 発行。PDFを開きます（手動で印刷）");
-    // PDF取得→新規タブで開く（印刷はユーザーが手動で・自動印刷はしない）
-    const pu=new URL(API_URL); pu.searchParams.set("action","seinopdf"); pu.searchParams.set("no",res.okurijoNo); pu.searchParams.set("email",CRED.email); pu.searchParams.set("pass",CRED.pass);
-    const pres=await fetch(pu.toString()).then(r=>r.json());
-    if(pres.ok && pres.pdf){
-      const bin=atob(pres.pdf); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
-      const url=URL.createObjectURL(new Blob([arr],{type:"application/pdf"}));
-      window.open(url,"_blank");
-    } else { toast("PDF取得失敗（番号"+res.okurijoNo+"で再取得できます）"); }
-    loadFromServer();
+    if(res.ok){ o.seinoOkurijoNo=res.okurijoNo; toast("✅ 送り状番号 "+res.okurijoNo+" 発行。HL-L2375DWで印刷します（数十秒）"); closeDrawer(); loadFromServer(); }
+    else { toast("発行失敗: "+(res.error||res.raw||"")); }
   }catch(e){ toast("通信エラー"); }
 }
 async function kakouRegisterNow(){ // ドロワーの手動登録
@@ -999,8 +989,8 @@ function openOrderDrawer(id){
     <div class="sec-t">送り状発行（${esc(shipCarrier(o))}）</div>
     ${shipCarrier(o)==="西濃"?`
       ${o.seinoOkurijoNo?`<div class="prep-line"><span>🚚 西濃送り状</span><span class="done">✅ 発行済 ${esc(o.seinoOkurijoNo)}</span></div>`:""}
-      <button class="btn primary" style="width:100%" onclick="seinoIssueFromDrawer()">🚚 西濃で送り状発行＋PDF表示（${kouguchiTotal(o)}個口）</button>
-      <div style="font-size:11px;color:#c0392b;margin-top:6px">⚠️ 現在<b>テスト環境</b>（実発送不可）。出荷登録→送り状PDFを開くだけ。<b>印刷はご自身で</b>（A5・手差しトレイ推奨）。本番キー受領後に本番化。</div>
+      <button class="btn primary" style="width:100%" onclick="seinoIssueFromDrawer()">🚚 西濃で送り状発行＋印刷（${kouguchiTotal(o)}個口）</button>
+      <div style="font-size:11px;color:#c0392b;margin-top:6px">⚠️ 現在<b>テスト環境</b>（実発送不可）。押すと出荷登録→<b>会社PCの HL-L2375DW でA5自動印刷</b>（押した時だけ・数十秒）。本番キー受領後に本番化。</div>
     `:`
       <button class="btn ghost" style="width:100%" onclick="copyShipInfo()">🚚 送り状の宛先情報をコピー（${kouguchiTotal(o)}個口）</button>
       <div style="font-size:11px;color:var(--muted);margin-top:6px">コピー後、Claudeに「<b>${esc(shipCarrier(o))}の送り状発行して</b>」と伝えるとe飛伝Ⅲに入力→印刷ポップアップ。印刷はA5・MFC-J6583CDWでCtrl+P。</div>
