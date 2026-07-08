@@ -766,6 +766,19 @@ function copyShipInfo(){
   const txt=L.join("\n");
   (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>toast("📋 送り状情報をコピーしました")).catch(()=>{ prompt("コピーしてください:",txt); });
 }
+// 西濃で送り状発行（API出荷登録→印刷ジョブ→会社PCで自動A5印刷）
+async function seinoIssueFromDrawer(){
+  const o=getOrder(state.drawer.id); if(!o) return;
+  const addr=(o.shipAddr&&/[都道府県市区町村]/.test(o.shipAddr))?o.shipAddr:(o.opMemo||"");
+  if(!confirm("【西濃で送り状発行】\n\n届け先: "+(o.customer||"")+"\n〒"+(o.shipZip||"?")+" "+(addr||"住所未取得")+"\n個口: "+kouguchiTotal(o)+"個口\n\n⚠️ 現在テスト環境です（実発送には使えません）。\n西濃APIで出荷登録し、会社PCでA5自動印刷します。よろしいですか？")) return;
+  toast("西濃で発行中…");
+  try{
+    const u=new URL(API_URL); u.searchParams.set("action","seinoissue"); u.searchParams.set("id",o.id); u.searchParams.set("email",CRED.email); u.searchParams.set("pass",CRED.pass);
+    const res=await fetch(u.toString()).then(r=>r.json());
+    if(res.ok){ o.seinoOkurijoNo=res.okurijoNo; toast("✅ 送り状番号 "+res.okurijoNo+" 発行。会社PCでA5印刷されます"); closeDrawer(); loadFromServer(); }
+    else { toast("発行失敗: "+(res.error||res.raw||"")); }
+  }catch(e){ toast("通信エラー"); }
+}
 async function kakouRegisterNow(){ // ドロワーの手動登録
   const o=getOrder(state.drawer.id); if(!o) return;
   if(!kakouDb||!kakouAuthed){ toast("加工予定表に接続できていません"); return; }
@@ -973,8 +986,14 @@ function openOrderDrawer(id){
       <div style="font-size:11px;color:var(--muted);margin-top:6px">住所・都道府県・長さ・束数を渡して開きます。ツール側で送料・最寄り営業所・配送確認メール文面が自動表示。${o.custType==="個人"?'<b style="color:#c0392b">個人＝支店止めなので営業所を確認</b>':""}</div>
     </div>`:""}
     <div class="sec-t">送り状発行（${esc(shipCarrier(o))}）</div>
-    <button class="btn ghost" style="width:100%" onclick="copyShipInfo()">🚚 送り状の宛先情報をコピー（${kouguchiTotal(o)}個口）</button>
-    <div style="font-size:11px;color:var(--muted);margin-top:6px">コピー後、Claudeに「<b>${esc(shipCarrier(o))}の送り状発行して</b>」と伝えると${shipCarrier(o)==="西濃"?"カンガルーマジック":"e飛伝Ⅲ"}に入力→印刷ポップアップまで自動。印刷はA5・MFC-J6583CDWでCtrl+P。</div>
+    ${shipCarrier(o)==="西濃"?`
+      ${o.seinoOkurijoNo?`<div class="prep-line"><span>🚚 西濃送り状</span><span class="done">✅ 発行済 ${esc(o.seinoOkurijoNo)}</span></div>`:""}
+      <button class="btn primary" style="width:100%" onclick="seinoIssueFromDrawer()">🚚 西濃で送り状発行＆自動印刷（${kouguchiTotal(o)}個口）</button>
+      <div style="font-size:11px;color:#c0392b;margin-top:6px">⚠️ 現在<b>テスト環境</b>（実発送不可）。ボタンで西濃API出荷登録→会社PCでA5自動印刷。本番キー受領後に本番化。</div>
+    `:`
+      <button class="btn ghost" style="width:100%" onclick="copyShipInfo()">🚚 送り状の宛先情報をコピー（${kouguchiTotal(o)}個口）</button>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">コピー後、Claudeに「<b>${esc(shipCarrier(o))}の送り状発行して</b>」と伝えるとe飛伝Ⅲに入力→印刷ポップアップ。印刷はA5・MFC-J6583CDWでCtrl+P。</div>
+    `}
     <div class="sec-t">ステータス</div>
     <div class="status-pick" id="o-status">
       ${O_STATUS.map(s=>`<button data-s="${s.k}" class="${o.status===s.k?'active':''}">${s.label}</button>`).join("")}
@@ -1334,7 +1353,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
 });
 // expose for inline onclick
-Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo});
+Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer});
 </script>
 </body>
 </html>
