@@ -983,7 +983,8 @@ function openOrderDrawer(id){
     <div class="prep-box">
       ${o.shipAddr?`<div class="prep-line"><span>📍 届け先</span><span style="text-align:right">〒${esc(o.shipZip)}<br>${esc(o.shipAddr)}</span></div>`:`<div style="font-size:12px;color:var(--muted)">届け先住所は未取得（次回取込で反映されます）</div>`}
       <a class="btn primary" href="${fareUrl(o)}" target="_blank" style="display:block;text-align:center;margin-top:8px;text-decoration:none">🧮 運賃ツールで送料計算＋営業所検索</a>
-      <div style="font-size:11px;color:var(--muted);margin-top:6px">住所・都道府県・長さ・束数を渡して開きます。ツール側で送料・最寄り営業所・配送確認メール文面が自動表示。${o.custType==="個人"?'<b style="color:#c0392b">個人＝支店止めなので営業所を確認</b>':""}</div>
+      ${o.custType==="個人"?`<div class="prep-line" style="margin-top:6px"><span>🏢 支店止め</span><span class="${o.branch?'done':'wait'}">${o.branch?esc(o.branch)+"支店止め（自動判定）":"最寄り営業所を判定中…"}</span></div>`:""}
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">住所・都道府県・長さ・束数を渡して開きます。ツール側で送料・営業所・配送確認メール文面が自動表示。</div>
     </div>`:""}
     <div class="sec-t">送り状発行（${esc(shipCarrier(o))}）</div>
     ${shipCarrier(o)==="西濃"?`
