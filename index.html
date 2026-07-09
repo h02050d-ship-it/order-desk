@@ -92,10 +92,13 @@
   .i-l1{display:flex; align-items:center; gap:7px; font-size:13px; font-weight:700; color:var(--ink); flex-wrap:wrap; row-gap:3px}
   .i-hin{flex:0 0 auto; width:18px; height:18px; border-radius:5px; color:#fff; font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center}
   .i-dim{font-variant-numeric:tabular-nums; letter-spacing:.01em}
+  .i-w{font-size:10px; font-weight:600; color:var(--muted); opacity:.7}
+  .i-w.wsp{font-size:13px; font-weight:800; color:#5d4037; background:#fff59d; border-radius:3px; padding:0 4px; opacity:1}
+  [data-theme="dark"] .i-w.wsp{color:#3a2e12; background:#e6c700}
   .i-len.cut{background:#fce4ec; color:#c2185b; border-radius:4px; padding:0 3px}
   .i-l2{display:flex; gap:5px; margin-top:2px; flex-wrap:wrap}
-  .i-g{font-size:10.5px; font-weight:800; border:1px solid; border-radius:4px; padding:0 5px}
-  .i-tag{font-size:10.5px; font-weight:800; border-radius:4px; padding:0 5px; border:1px solid var(--line2); color:var(--muted); background:var(--panel2)}
+  .i-g{font-size:12px; font-weight:800; border:1px solid; border-radius:4px; padding:0 5px}
+  .i-tag{font-size:12px; font-weight:800; border-radius:4px; padding:0 5px; border:1px solid var(--line2); color:var(--muted); background:var(--panel2)}
   .i-tag.bc{background:#f3e8fa; border-color:#dcc6ef; color:#7b1fa2}
   .i-tag.bc.c{background:#fdeee4; border-color:#f0c49c; color:#b34700}
   .i-tag.cut{background:#fce4ec; border-color:#f8bbd0; color:#c2185b}
@@ -587,14 +590,22 @@ function itemLineHTML(it){
   if(p.dim){
     const parts=p.dim.split("×"); const len=parts.pop();
     if(parts.length===2 && /フローリング|羽目板/.test(p.type)) parts[1]="120"; // 幅は原板120表記
-    dimHtml=`<span class="i-dim">${esc(parts.join("×"))}×<span class="i-len${cut?" cut":""}">${esc(len)}</span></span>`;
+    let inner;
+    if(parts.length===2){ // 厚×幅×長：幅を特別扱い（120=薄く小さく / それ以外=黄背景で強調）
+      const w=parts[1];
+      const wCls=(w==="120")?"i-w":"i-w wsp";
+      inner=`${esc(parts[0])}×<span class="${wCls}">${esc(w)}</span>×<span class="i-len${cut?" cut":""}">${esc(len)}</span>`;
+    } else {
+      inner=`${esc(parts.join("×"))}×<span class="i-len${cut?" cut":""}">${esc(len)}</span>`;
+    }
+    dimHtml=`<span class="i-dim">${inner}</span>`;
   }
   const gname=kakouGradeOf(p.fushi,"");            // 加工予定表準拠の等級名(節有→丸節)
   const gc=KAKOU_GRADE_COLORS[gname]||"#6a5a44";
   let tags="";
   if(gname && gname!=="-") tags+=`<span class="i-g" style="color:${gc};background:${gc}14;border-color:${gc}44">${esc(gname)}</span>`;
   if(isB||isC) tags+=`<span class="i-tag bc${isC?" c":""}">${p.grade}級</span>`;
-  if(cut) tags+=`<span class="i-tag cut">✂ 両端カット</span>`;
+  if(cut) tags+=`<span class="i-tag cut">両端カット</span>`;
   if(tosou) tags+=`<span class="i-tag cut">🎨 塗装</span>`;
   return `<div class="i-item">
     <div class="i-main">
