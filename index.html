@@ -74,6 +74,8 @@
   .col-h{display:flex; align-items:center; gap:7px; padding:2px 4px 9px; font-size:13px; font-weight:700}
   .col-h .dot{width:9px;height:9px;border-radius:50%}
   .col-h .cnt{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--muted); font-size:11.5px; border-radius:20px; padding:1px 8px; font-weight:700}
+  .col-h .col-note{background:#e7f6ef; color:#177a59; border:1px solid #bce6d3; font-size:10.5px; font-weight:800; border-radius:5px; padding:0 6px}
+  [data-theme="dark"] .col-h .col-note{background:#1f3a30; color:#7fe0b8; border-color:#34492f}
 
   .card{background:var(--panel); border:1px solid var(--line); border-radius:11px; padding:10px; margin-bottom:9px; box-shadow:var(--shadow); cursor:pointer; transition:transform .08s}
   .card:active{transform:scale(.99)}
@@ -850,7 +852,7 @@ function renderOrders(){
     if(col.k==="done") cards.sort((a,b)=> (b.updatedAt||b.date||"").localeCompare(a.updatedAt||a.date||"")); // 完了した順（新しい完了が上）
     else cards.sort((a,b)=> (a.date||"").localeCompare(b.date||"")); // 新規〜出荷済は古い順（古い注文が上＝先に処理）
     const c=document.createElement("div"); c.className="col";
-    c.innerHTML=`<div class="col-h"><span class="dot" style="background:${col.dot}"></span>${col.label}<span class="cnt">${cards.length}</span></div>`;
+    c.innerHTML=`<div class="col-h"><span class="dot" style="background:${col.dot}"></span>${col.label}${col.k==="preparing"?'<span class="col-note">✅ 加工OK</span>':''}<span class="cnt">${cards.length}</span></div>`;
     if(!cards.length){ c.insertAdjacentHTML("beforeend",`<div class="col-empty">—</div>`); }
     cards.forEach((o)=>{
       const el=orderCard(o);
@@ -877,13 +879,13 @@ function orderCard(o){
     </div>
     <div class="items">${itemsSummaryHTML(o.items)}</div>
     <div class="flagrow">
-      ${o.custType?'<span class="pill cust-'+(o.custType==="法人"?"corp":"indiv")+'">'+(o.custType==="法人"?"🏢 法人":("🏠 個人"+(o.branch?"・"+esc(o.branch)+"支店止め":"（支店止め）")))+'</span>':''}
+      ${o.custType?'<span class="pill cust-'+(o.custType==="法人"?"corp":"indiv")+'">'+(o.custType==="法人"?"🏢 法人":("🏠 個人"+(o.branch?"・<b>"+esc(o.branch)+"支店止め</b>":"<b>（支店止め）</b>")))+'</span>':''}
       ${o.remarks?'<span class="pill memo memo-on" title="備考: '+esc(o.remarks)+'">📝 備考あり</span>':''}
       ${o.deliveryDate?'<span class="pill date-spec">⏰ '+esc(o.deliveryDate)+' 着指定</span>':''}
       ${(needsFreight(o)&&o.status==="new")?'<span class="pill warn">🚚 運賃見積り(2m〜)</span>':''}
       ${(o.mall==="yahoo"&&o.status==="new"&&ageDays(o)>=2)?'<span class="pill warn">⚠️ '+ageDays(o)+'日滞留（ヤフーは手動更新）</span>':''}
       ${(o.mall==="rakuten"&&o.status==="new"&&!o.mailSent&&needsShipConfirm(o))?'<span class="pill mail-wait">📧 メール未送信</span>':''}
-      ${(o.status!=="done")?((needsShipConfirm(o)&&!effShipConfirmed(o))?'<span class="pill ship-wait">🚚 配送確認</span>':((o.mall==="rakuten"&&!o.paid)?'<span class="pill pay-wait">💰 支払確認</span>':'<span class="pill kakou-ok">✅ 加工OK</span>')):""}
+      ${o.status==="new"?(((needsShipConfirm(o)&&!effShipConfirmed(o))?'<span class="pill ship-wait">🚚 配送未確認</span>':'')+((!isPaidOk(o))?'<span class="pill pay-wait">💰 支払未確認</span>':'')+(kakouReady(o)?'<span class="pill kakou-ok">✅ 加工OK</span>':'')):""}
       ${(o.kakouAdded&&o.status!=="done")?'<span class="pill kakou-ok">🪵 予定表済</span>':''}
       ${(o.mall==="rakuten"&&o.status==="new")?'<span class="pill prog">📋 '+esc(o.progress&&o.progress!==100?rkProgressLabel(o):"注文確定待ち")+'</span>':''}
       ${o.hasMsg?'<span class="pill msg">💬 問い合わせ</span>':''}
