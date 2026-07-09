@@ -874,7 +874,7 @@ function renderOrders(){
   const board = document.createElement("div"); board.className="board";
   O_STATUS.forEach(col=>{
     let cards = list.filter(o=>o.status===col.k);
-    if(col.k==="done") cards.sort((a,b)=> (b.updatedAt||b.date||"").localeCompare(a.updatedAt||a.date||"")); // 完了した順（新しい完了が上）
+    if(col.k==="done") cards.sort((a,b)=> (b.date||"").localeCompare(a.date||"")); // 注文日の新しい順（新しい注文が上）
     else cards.sort((a,b)=> (a.date||"").localeCompare(b.date||"")); // 新規〜出荷済は古い順（古い注文が上＝先に処理）
     const c=document.createElement("div"); c.className="col";
     const colNote={new:"⏳ 配送・支払確認中", preparing:"✅ 加工OK", shipped:"🚚 集荷依頼済", done:"📦 引渡し完了"}[col.k]||"";
