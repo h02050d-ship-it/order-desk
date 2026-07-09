@@ -623,7 +623,17 @@ function loadFareInline(btn){
   const f=document.createElement('iframe');
   f.src=btn.dataset.fare; f.setAttribute('scrolling','no');
   f.style.cssText='width:100%;border:1px solid var(--line,#ddd);border-radius:8px;height:140px;background:#fff';
-  f.onload=function(){ try{ const h=f.contentDocument.body.scrollHeight; if(h>40) f.style.height=(h+10)+'px'; }catch(e){ f.style.height='420px'; } btn.textContent='🧮 運賃・営業所（再計算/開閉）'; };
+  f.onload=function(){
+    btn.textContent='🧮 運賃・営業所（再計算/開閉）';
+    try{
+      const doc=f.contentDocument;
+      const resize=()=>{ const h=Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight); if(h>40) f.style.height=(h+18)+'px'; };
+      resize();
+      // 営業所検索・運賃計算は非同期で後から伸びるので追従させる
+      try{ new f.contentWindow.ResizeObserver(resize).observe(doc.body); }catch(e){}
+      let t=0; const iv=setInterval(()=>{ resize(); if(++t>15) clearInterval(iv); }, 400);
+    }catch(e){ f.style.height='760px'; }
+  };
   box.appendChild(f); box.dataset.loaded='1';
 }
 function rkProgressLabel(o){ if(o.mall!=="rakuten") return ""; return RK_PROGRESS_LABEL[o.progress] || "注文確認待ち"; }
