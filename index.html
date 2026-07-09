@@ -686,6 +686,8 @@ function isTestOrder(o){ return /(^|:)?TEST-/i.test(String(o.orderNo||"")) || /T
 function kakouRowsFor(o){
   if(isTestOrder(o)) return [];
   const rows=[]; const carrier=shipCarrier(o);
+  const payPend=!isPaidOk(o), shipPend=needsShipConfirm(o)&&!effShipConfirmed(o);
+  const actualVal=payPend?"支払確認":(shipPend?"配送確認":"-");  // 実際列＝確認ステータス（加工OKで"-"）
   (o.items||[]).forEach((it,idx)=>{
     const p=parseItem(it.name);
     const hin = /フローリング/.test(p.type)?"F" : /羽目板/.test(p.type)?"P" : /スノコ/.test(p.type)?"S" : "";
@@ -712,7 +714,7 @@ function kakouRowsFor(o){
       hinmei:hin, grade:grade,
       thickness:d[0], width:((hin==="F"||hin==="P")?"120":d[1]), length:d[2], // 加工幅は原板120(羽目板103/ﾌﾛｰﾘﾝｸﾞ108→120表記)
 
-      qty:String(qty), planned:String(planned), actual:"-",
+      qty:String(qty), planned:String(planned), actual:actualVal,
       seal:"無", danball:"有", remark:rem.filter(Boolean).join(" ")};
     if(/両端直角カット/.test(opt)) row.ryoutan="1";
     if(/塗装/.test(opt)) row.tosou="1";
@@ -755,14 +757,27 @@ async function autoKakouSync(){
   if(!kakouDb || !kakouAuthed || _kakouBusy) return;
   _kakouBusy=true;
   try{
-    const targets=state.orders.filter(o=>!isTestOrder(o) && (o.status==="new"||o.status==="preparing") && !o.tracking && kakouReady(o) && !o.kakouAdded && kakouRowsFor(o).length); // テスト注文・送り状あり(加工済)は対象外
-    for(const o of targets){
+    // 注文が入った段階で登録（加工OK前でも）。未確認は実際列に「支払確認/配送確認」表示、加工OKで「-」
+    const active=state.orders.filter(o=>!isTestOrder(o) && (o.status==="new"||o.status==="preparing") && !o.tracking && kakouRowsFor(o).length); // テスト・送り状あり(加工済)は除外
+    const inserts=active.filter(o=>!o.kakouAdded);
+    for(const o of inserts){
       const r=await kakouWrite_(o);
-      toast("🪵 加工予定表: "+orderName(o)+" "+(r.written?"自動登録"+r.written+"行":"")+(r.skipped?"（既存行あり"+r.skipped+"件スキップ）":""));
+      toast("🪵 加工予定表: "+orderName(o)+" "+(r.written?"登録"+r.written+"行":"")+(r.skipped?"（既存"+r.skipped+"スキップ）":""));
     }
-    if(targets.length) render();
-  }catch(e){ console.warn("加工予定表 登録失敗",e); }
+    for(const o of active.filter(o=>o.kakouAdded)){ await kakouUpdateStatus_(o); } // 既登録は確認ステータスだけ追従更新
+    if(inserts.length) render();
+  }catch(e){ console.warn("加工予定表 同期失敗",e); }
   finally{ _kakouBusy=false; }
+}
+// 既登録行の「実際(確認ステータス)」だけを追従更新。スタッフが数値等を入れていたら触らない
+async function kakouUpdateStatus_(o){
+  for(const r of kakouRowsFor(o)){
+    try{
+      const snap=await kakouDb.ref("items/"+r._uid).once("value"); const ex=snap.val(); if(!ex) continue;
+      const a=ex.actual;
+      if((a==="配送確認"||a==="支払確認"||a==="-"||a===""||a==null) && a!==r.actual){ await kakouDb.ref("items/"+r._uid+"/actual").set(r.actual); }
+    }catch(e){}
+  }
 }
 // 送り状の総個口（全商品分の合計）
 function kouguchiTotal(o){
@@ -998,7 +1013,7 @@ function openOrderDrawer(id){
       :needsShipConfirm(o)?`<div class="prep-line"><span>🚚 配送</span><span class="done">✅ 確認済（出荷準備中以降は確認済み扱い）</span></div>`
       :`<div class="prep-line"><span>🚚 配送</span><span class="done">✅ ${esc(shipCarrier(o))}（1m通常宅配 → 配送確認不要）</span></div>`}
       <div class="prep-result">${kakouReady(o)?'✅ <b>加工OK</b>（加工して良い合図）':(needsShipConfirm(o)?'⏳ 支払と配送確認が揃うと「加工OK」になります':'⏳ 入金が確認できると「加工OK」になります')}</div>
-      ${kakouRowsFor(o).length?`<div class="prep-line" style="margin:8px 0 0"><span>🪵 加工予定表</span><span class="${o.kakouAdded?'done':'wait'}">${o.kakouAdded?`✅ 登録済み（<a href="${KAKOU_URL}" target="_blank" style="color:inherit">開く↗</a>）`:(kakouReady(o)?'⏳ まもなく自動登録':'加工OKで自動登録されます')}</span></div>
+      ${kakouRowsFor(o).length?`<div class="prep-line" style="margin:8px 0 0"><span>🪵 加工予定表</span><span class="${o.kakouAdded?'done':'wait'}">${o.kakouAdded?`✅ 登録済み${kakouReady(o)?'':'（実際欄に'+(!isPaidOk(o)?'支払確認':'配送確認')+'表示中）'}（<a href="${KAKOU_URL}" target="_blank" style="color:inherit">開く↗</a>）`:'⏳ まもなく自動登録（注文段階で登録）'}</span></div>
       ${!o.kakouAdded?`<button class="btn ghost" style="margin-top:7px;width:100%" onclick="kakouRegisterNow()">🪵 加工予定表に今すぐ登録（${kakouRowsFor(o).length}行）</button>`:''}`:''}
     </div>
     ${needsFreight(o)?`<div class="sec-t">運賃・営業所（2m以上は送料確認要）</div>
