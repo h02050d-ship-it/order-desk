@@ -852,7 +852,8 @@ function renderOrders(){
     if(col.k==="done") cards.sort((a,b)=> (b.updatedAt||b.date||"").localeCompare(a.updatedAt||a.date||"")); // 完了した順（新しい完了が上）
     else cards.sort((a,b)=> (a.date||"").localeCompare(b.date||"")); // 新規〜出荷済は古い順（古い注文が上＝先に処理）
     const c=document.createElement("div"); c.className="col";
-    c.innerHTML=`<div class="col-h"><span class="dot" style="background:${col.dot}"></span>${col.label}${col.k==="preparing"?'<span class="col-note">✅ 加工OK</span>':''}<span class="cnt">${cards.length}</span></div>`;
+    const colNote={preparing:"✅ 加工OK", shipped:"🚚 出荷登録＋集荷依頼済"}[col.k]||"";
+    c.innerHTML=`<div class="col-h"><span class="dot" style="background:${col.dot}"></span>${col.label}${colNote?`<span class="col-note">${colNote}</span>`:''}<span class="cnt">${cards.length}</span></div>`;
     if(!cards.length){ c.insertAdjacentHTML("beforeend",`<div class="col-empty">—</div>`); }
     cards.forEach((o)=>{
       const el=orderCard(o);
