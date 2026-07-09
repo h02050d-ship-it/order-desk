@@ -89,7 +89,10 @@
   .i-item{display:flex; align-items:center; gap:8px; padding:4px 0; border-bottom:1px dashed var(--line)}
   .i-item:last-child{border-bottom:none}
   .i-main{min-width:0}
-  .i-l1{display:flex; align-items:center; gap:7px; font-size:13px; font-weight:700; color:var(--ink); flex-wrap:wrap; row-gap:3px}
+  .i-l1{display:flex; align-items:center; gap:7px; font-size:13px; font-weight:700; color:var(--ink); flex-wrap:wrap; row-gap:3px; flex:1 1 100%}
+  .i-cntl{margin-left:auto; display:flex; align-items:baseline; gap:6px; flex:0 0 auto}
+  .i-cntl .i-nyu{font-size:11px; color:var(--muted); font-weight:600}
+  .i-cntl .i-set{font-size:14px; font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums}
   .i-hin{flex:0 0 auto; width:18px; height:18px; border-radius:5px; color:#fff; font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center}
   .i-dim{font-variant-numeric:tabular-nums; letter-spacing:.01em}
   .i-len.cut{background:#fce4ec; color:#c2185b; border-radius:4px; padding:0 3px}
@@ -597,10 +600,7 @@ function itemLineHTML(it){
   if(cut) tags+=`<span class="i-tag cut">両端カット</span>`;
   if(tosou) tags+=`<span class="i-tag cut">🎨 塗装</span>`;
   return `<div class="i-item">
-    <div class="i-main">
-      <div class="i-l1">${ch?`<span class="i-hin" style="background:${ch.bg}">${ch.hin}</span>`:(p.wood?`<span class="i-name">${esc(p.wood+p.type)}</span>`:"")}${dimHtml}${tags}</div>
-    </div>
-    <div class="i-cnt">×${n}<small>${p.qty?esc(p.qty):""}</small></div>
+    <div class="i-l1">${ch?`<span class="i-hin" style="background:${ch.bg}">${ch.hin}</span>`:(p.wood?`<span class="i-name">${esc(p.wood+p.type)}</span>`:"")}${dimHtml}${tags}<span class="i-cntl">${p.qty?`<span class="i-nyu">${esc(p.qty)}</span>`:""}<span class="i-set">×${n}</span></span></div>
   </div>`;
 }
 function itemsSummaryHTML(items){ return (items||[]).map(itemLineHTML).join(''); }
