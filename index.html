@@ -81,7 +81,11 @@
   .card:active{transform:scale(.99)}
   .card .top{display:flex; align-items:center; gap:6px; margin-bottom:6px}
   .badge{font-size:10.5px; font-weight:800; color:#fff; border-radius:6px; padding:2px 7px; letter-spacing:.02em}
-  .badge.rakuten{background:var(--rakuten)} .badge.yahoo{background:var(--yahoo)}
+  .badge.rakuten{background:var(--rakuten)} .badge.yahoo{background:var(--yahoo)} .badge.ichiba{background:#2e7d32}
+  .pill.doc-order{background:#e7f6ef; color:#177a59; border-color:#bce6d3; font-weight:800}
+  .pill.doc-quote{background:#e8f1fd; color:#1a5dab; border-color:#bcd6f5; font-weight:800}
+  .pill.doc-check{background:#fff4e5; color:#a06a14; border-color:#f3d9a8; font-weight:800}
+  .doc-text{white-space:pre-wrap; font-size:11.5px; line-height:1.6; max-height:260px; overflow:auto; background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:10px; margin-top:6px}
   .card .ono{font-size:11px; color:var(--muted); font-weight:600; margin-left:auto}
   .card .ono-link{font-size:11px; color:var(--brand); font-weight:700; margin-left:auto; text-decoration:none; white-space:nowrap; padding:2px 4px; border-radius:6px}
   .card .ono-link:hover{text-decoration:underline; background:var(--panel2)}
@@ -304,6 +308,7 @@
 
     <div class="tabs">
       <button class="tab active" data-tab="orders">📋 受注ボード</button>
+      <button class="tab" data-tab="ichiba">🏪 市場（FAX・メール）</button>
       <button class="tab" data-tab="inquiries">💬 問い合わせ</button>
     </div>
   </header>
@@ -358,7 +363,10 @@ const MALL = {
     msgUrl:"https://r-messe.rms.rakuten.co.jp/" },     // R-Messe 問い合わせ
   yahoo:{ label:"Yahoo!", cls:"yahoo",
     orderUrl:"https://pro.store.yahoo.co.jp/",          // ストアクリエイターPro
-    msgUrl:"https://pro.store.yahoo.co.jp/" }
+    msgUrl:"https://pro.store.yahoo.co.jp/" },
+  ichiba:{ label:"市場", cls:"ichiba",
+    orderUrl:"https://drive.google.com/drive/folders/1KstmyX4dGs0mNlJ16bCNj0CFVwL9sAaS", // FAXフォルダ
+    msgUrl:"https://mail.google.com/" }
 };
 const O_STATUS = [
   {k:"new",       label:"新規受注",   dot:"var(--new)"},
@@ -705,8 +713,8 @@ function kakouRowsFor(o){
     if(o.custType==="個人") rem.push((o.branch||"")+"支店止め");  // 支店名(あれば)＋支店止め
     if(o.deliveryDate) rem.push(o.deliveryDate.slice(5).replace("-","/")+"着指定");
     if(p.grade==="B" && !/^B/.test(grade)) rem.push("B級品");
-    const pre=o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":"ネット";  // 名前プレフィックス(様なし)
-    const sur=String(o.customer||"").split(/[ 　]/)[0]||"";
+    const pre=o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":o.mall==="ichiba"?"":"ネット";  // 名前プレフィックス(様なし)
+    const sur=o.mall==="ichiba"?String(o.customer||"").trim():(String(o.customer||"").split(/[ 　]/)[0]||"");  // 市場は社名そのまま
     const carVal=carrier==="西濃"?"西濃":carrier==="佐川"?"佐川":"";  // 配送列
     const uid=("od_"+String(o.id||o.orderNo)+"_"+idx).replace(/[.#$/\[\]:]/g,"_");
     const row={_uid:uid, order:"8",
@@ -758,7 +766,7 @@ async function autoKakouSync(){
   _kakouBusy=true;
   try{
     // 注文が入った段階で登録（加工OK前でも）。未確認は実際列に「支払確認/配送確認」表示、加工OKで「-」
-    const active=state.orders.filter(o=>!isTestOrder(o) && (o.status==="new"||o.status==="preparing") && !o.tracking && kakouRowsFor(o).length); // テスト・送り状あり(加工済)は除外
+    const active=state.orders.filter(o=>!isTestOrder(o) && o.mall!=="ichiba" && (o.status==="new"||o.status==="preparing") && !o.tracking && kakouRowsFor(o).length); // テスト・送り状あり(加工済)・市場(人間チェック必須)は除外
     const inserts=active.filter(o=>!o.kakouAdded);
     for(const o of inserts){
       const r=await kakouWrite_(o);
@@ -818,17 +826,30 @@ async function seinoIssueFromDrawer(){
 async function kakouRegisterNow(){ // ドロワーの手動登録
   const o=getOrder(state.drawer.id); if(!o) return;
   if(!kakouDb||!kakouAuthed){ toast("加工予定表に接続できていません"); return; }
-  if(!kakouRowsFor(o).length){ toast("登録対象の商品がありません"); return; }
+  const rows=kakouRowsFor(o);
+  if(!rows.length){ toast("登録対象の商品がありません"); return; }
+  if(o.mall==="ichiba"){ // 市場は人間チェック必須：登録内容を提示して確認
+    const lines=rows.map(r=>`・${r.customer} ${r.hinmei} ${r.grade} ${r.thickness}×${r.width}×${r.length} 入数${r.qty}×予定${r.planned}`).join("\n");
+    if(!confirm("【加工予定表に登録】原本と見比べて正しいですか？\n\n"+lines+"\n\n間違いがあれば登録せず、加工予定表で手入力してください。")) return;
+  }
   const r=await kakouWrite_(o);
   toast("🪵 加工予定表: "+(r.written?"登録"+r.written+"行":"登録なし")+(r.skipped?"（既存行あり"+r.skipped+"件スキップ）":""));
   render(); openOrderDrawer(o.id);
+}
+function saveDocType(v){ // 市場：注文/見積り/要確認 の切替
+  const o=getOrder(state.drawer.id); if(!o) return;
+  o.docType=v; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.docType=v;
+  apiPost({action:"order", id:o.id, docType:v});
+  toast("種別を「"+v+"」にしました"); render();
 }
 function getOrder(id){ return state.orders.find(o=>o.id===id); }
 function getInq(id){ return state.inquiries.find(q=>q.id===id); }
 function now(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
 
 function matchFilter(o){
-  if(state.mall!=="all" && o.mall!==state.mall) return false;
+  if(state.tab==="ichiba"){ if(o.mall!=="ichiba") return false; }   // 市場タブ＝市場のみ
+  else if(o.mall==="ichiba") return false;                            // ECタブ＝市場を出さない
+  if(state.tab!=="ichiba" && state.mall!=="all" && o.mall!==state.mall) return false;
   const s = state.search.trim().toLowerCase();
   if(!s) return true;
   const hay = [o.orderNo, o.customer, o.subject, (o.items?o.items.map(i=>i.name).join(" "):"")].join(" ").toLowerCase();
@@ -911,7 +932,8 @@ function orderCard(o){
       ${(needsFreight(o)&&o.status==="new")?'<span class="pill warn">🚚 運賃見積り(2m〜)</span>':''}
       ${(o.mall==="yahoo"&&o.status==="new"&&ageDays(o)>=2)?'<span class="pill warn">⚠️ '+ageDays(o)+'日滞留（ヤフーは手動更新）</span>':''}
       ${(o.mall==="rakuten"&&o.status==="new"&&!o.mailSent&&needsShipConfirm(o))?'<span class="pill mail-wait">📧 メール未送信</span>':''}
-      ${o.status==="new"?(((needsShipConfirm(o)&&!effShipConfirmed(o))?'<span class="pill ship-wait">🚚 配送未確認</span>':'')+((!isPaidOk(o))?'<span class="pill pay-wait">💰 支払未確認</span>':'')+(kakouReady(o)?'<span class="pill kakou-ok">✅ 加工OK</span>':'')):""}
+      ${o.mall==="ichiba"?(('<span class="pill '+(o.docType==="注文"?"doc-order":o.docType==="見積り"?"doc-quote":"doc-check")+'">'+(o.docType==="注文"?"📝 注文":o.docType==="見積り"?"💰 見積り":"❓ 要確認")+'</span>')+('<span class="pill">'+(o.src==="mail"?"📧 メール":"📠 FAX")+'</span>')):""}
+      ${(o.mall!=="ichiba"&&o.status==="new")?(((needsShipConfirm(o)&&!effShipConfirmed(o))?'<span class="pill ship-wait">🚚 配送未確認</span>':'')+((!isPaidOk(o))?'<span class="pill pay-wait">💰 支払未確認</span>':'')+(kakouReady(o)?'<span class="pill kakou-ok">✅ 加工OK</span>':'')):""}
       ${(o.kakouAdded&&o.status!=="done")?'<span class="pill kakou-ok">🪵 予定表済</span>':''}
       ${(o.mall==="rakuten"&&o.status==="new")?'<span class="pill prog">📋 '+esc(o.progress&&o.progress!==100?rkProgressLabel(o):"注文確定待ち")+'</span>':''}
       ${o.hasMsg?'<span class="pill msg">💬 問い合わせ</span>':''}
@@ -1004,7 +1026,25 @@ function openOrderDrawer(id){
     ${o.remarks?`<div class="remarks-box"><b>📝 お客様備考</b>\n${esc(o.remarks)}</div>`:""}
     <label class="fld">お客様名${o.customer?'':'（ヤフーは自動取得できないため手入力）'}</label>
     <input class="txt" id="o-cust" placeholder="例：堀上 / 佐藤" value="${esc(o.customer||'')}" />
-    <div class="sec-t">加工の準備</div>
+    ${o.mall==="ichiba"?`
+    <div class="sec-t">📄 原本・内容（${o.src==="mail"?"メール":"FAX"}）</div>
+    <div class="prep-box">
+      <div class="prep-line"><span>種別</span><span>
+        <select class="sel" id="o-doctype" onchange="saveDocType(this.value)">
+          ${["注文","見積り","要確認"].map(t=>`<option value="${t}" ${o.docType===t?"selected":""}>${t}</option>`).join("")}
+        </select></span></div>
+      ${o.fileUrl?`<a class="btn ghost" style="display:block;text-align:center;margin-top:8px;text-decoration:none" href="${esc(o.fileUrl)}" target="_blank">📄 原本を開く（${o.src==="mail"?"Gmail":"Drive"}↗）</a>`:""}
+      ${o.docText?`<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12.5px;font-weight:700">🔍 読み取りテキストを表示</summary><div class="doc-text">${esc(o.docText)}</div></details>`:`<div style="font-size:12px;color:var(--muted);margin-top:6px">読み取りテキストなし（原本を確認してください）</div>`}
+    </div>
+    <div class="sec-t">🪵 加工予定表（内容の人間チェック必須）</div>
+    <div class="prep-box">
+      ${o.kakouAdded?`<div class="prep-line"><span>🪵 加工予定表</span><span class="done">✅ 登録済み（<a href="${KAKOU_URL}" target="_blank" style="color:inherit">開く↗</a>）</span></div>`
+      :kakouRowsFor(o).length?`
+        <div style="font-size:12px;color:var(--muted)">読み取った寸法候補 ${kakouRowsFor(o).length}行。<b>原本と見比べて内容が正しいか確認</b>してから登録してください。</div>
+        <button class="btn primary" style="width:100%;margin-top:8px" onclick="kakouRegisterNow()">🪵 内容を確認した → 加工予定表に登録（${kakouRowsFor(o).length}行）</button>`
+      :`<div style="font-size:12px;color:var(--muted)">寸法を自動抽出できませんでした。<a href="${KAKOU_URL}" target="_blank">加工予定表を開いて手入力↗</a>してください。</div>`}
+    </div>`:""}
+    ${o.mall==="ichiba"?"":`<div class="sec-t">加工の準備</div>
     <div class="prep-box ${kakouReady(o)?'ok':''}">
       <div class="prep-line"><span>💰 支払</span><span class="${isPaidOk(o)?'done':'wait'}">${isPaidOk(o)?'✅ 確認済'+(o.mall!=='rakuten'?'（ヤフーは手動把握）':''):'⏳ 入金待ち（API把握）'}</span></div>
       ${(needsShipConfirm(o)&&o.status==="new")?`
@@ -1015,8 +1055,8 @@ function openOrderDrawer(id){
       <div class="prep-result">${kakouReady(o)?'✅ <b>加工OK</b>（加工して良い合図）':(needsShipConfirm(o)?'⏳ 支払と配送確認が揃うと「加工OK」になります':'⏳ 入金が確認できると「加工OK」になります')}</div>
       ${kakouRowsFor(o).length?`<div class="prep-line" style="margin:8px 0 0"><span>🪵 加工予定表</span><span class="${o.kakouAdded?'done':'wait'}">${o.kakouAdded?`✅ 登録済み${kakouReady(o)?'':'（実際欄に'+(!isPaidOk(o)?'支払確認':'配送確認')+'表示中）'}（<a href="${KAKOU_URL}" target="_blank" style="color:inherit">開く↗</a>）`:'⏳ まもなく自動登録（注文段階で登録）'}</span></div>
       ${!o.kakouAdded?`<button class="btn ghost" style="margin-top:7px;width:100%" onclick="kakouRegisterNow()">🪵 加工予定表に今すぐ登録（${kakouRowsFor(o).length}行）</button>`:''}`:''}
-    </div>
-    ${needsFreight(o)?`<div class="sec-t">運賃・営業所（2m以上は送料確認要）</div>
+    </div>`}
+    ${(o.mall!=="ichiba"&&needsFreight(o))?`<div class="sec-t">運賃・営業所（2m以上は送料確認要）</div>
     <div class="prep-box">
       ${o.shipAddr?`<div class="prep-line"><span>📍 届け先</span><span style="text-align:right">〒${esc(o.shipZip)}<br>${esc(o.shipAddr)}</span></div>`:`<div style="font-size:12px;color:var(--muted)">届け先住所は未取得（次回取込で反映されます）</div>`}
       <button class="btn primary" style="width:100%;margin-top:8px" data-fare="${fareUrl(o)}&embed=1" onclick="loadFareInline(this)">🧮 運賃ツールで送料計算＋営業所検索</button>
@@ -1024,7 +1064,7 @@ function openOrderDrawer(id){
       ${o.custType==="個人"?`<div class="prep-line" style="margin-top:6px"><span>🏢 支店止め</span><span class="${o.branch?'done':'wait'}">${o.branch?esc(o.branch)+"支店止め（自動判定）":"最寄り営業所を判定中…"}</span></div>`:""}
       <div style="font-size:11px;color:var(--muted);margin-top:6px">押すと裏で運賃ツールを実行し、送料・営業所をこの下に表示します（別タブは開きません）。</div>
     </div>`:""}
-    <div class="sec-t">送り状発行（${esc(shipCarrier(o))}）</div>
+    ${o.mall==="ichiba"?"":`<div class="sec-t">送り状発行（${esc(shipCarrier(o))}）</div>
     ${shipCarrier(o)==="西濃"?`
       ${o.seinoOkurijoNo?`<div class="prep-line"><span>🚚 西濃送り状</span><span class="done">✅ 発行済 ${esc(o.seinoOkurijoNo)}</span></div>`:""}
       <button class="btn primary" style="width:100%" onclick="seinoIssueFromDrawer()">🚚 西濃で送り状発行＋印刷（${kouguchiTotal(o)}個口）</button>
@@ -1032,7 +1072,7 @@ function openOrderDrawer(id){
     `:`
       <button class="btn ghost" style="width:100%" onclick="copyShipInfo()">🚚 送り状の宛先情報をコピー（${kouguchiTotal(o)}個口）</button>
       <div style="font-size:11px;color:var(--muted);margin-top:6px">コピー後、Claudeに「<b>${esc(shipCarrier(o))}の送り状発行して</b>」と伝えるとe飛伝Ⅲに入力→印刷ポップアップ。印刷はA5・MFC-J6583CDWでCtrl+P。</div>
-    `}
+    `}`}
     <div class="sec-t">ステータス</div>
     <div class="status-pick" id="o-status">
       ${O_STATUS.map(s=>`<button data-s="${s.k}" class="${o.status===s.k?'active':''}">${s.label}</button>`).join("")}
@@ -1310,10 +1350,12 @@ function closeDrawer(){ $("#scrim").classList.remove("on"); $("#drawer").classLi
 function render(){
   renderKPIs();
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.tab===state.tab));
-  $("#view-orders").classList.toggle("hidden", state.tab!=="orders");
+  const isBoard=(state.tab==="orders"||state.tab==="ichiba");
+  $("#view-orders").classList.toggle("hidden", !isBoard);
   $("#view-inquiries").classList.toggle("hidden", state.tab!=="inquiries");
-  $("#fab-label").textContent = state.tab==="orders"?"注文を追加":"問い合わせを追加";
-  if(state.tab==="orders") renderOrders(); else renderInquiries();
+  const seg=document.getElementById("mall-seg"); if(seg) seg.style.visibility=(state.tab==="ichiba")?"hidden":"visible"; // 市場タブではモール絞込を隠す
+  $("#fab-label").textContent = isBoard?"注文を追加":"問い合わせを追加";
+  if(isBoard) renderOrders(); else renderInquiries();
   document.querySelectorAll("#mall-seg button").forEach(b=>b.classList.toggle("active", b.dataset.mall===state.mall));
 }
 
@@ -1392,7 +1434,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
 });
 // expose for inline onclick
-Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline});
+Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline,saveDocType});
 </script>
 </body>
 </html>
