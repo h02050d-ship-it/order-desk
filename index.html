@@ -298,6 +298,7 @@
         <div class="h-sub" id="h-sub">林材木店 EC</div>
       </div>
       <div class="h-spacer"></div>
+      <button class="icon-btn" id="btn-honjitsu" title="本日出す（楽天発送通知＋出荷一覧表FAX＋集荷依頼）" onclick="honjitsuRun()" style="width:auto;padding:0 10px;font-size:12px">📦 本日出す</button>
       <span class="h-upd" id="h-upd" title="サーバから最後に取得した時刻（3分ごと＋タブ復帰時に自動更新）"></span>
       <button class="icon-btn" id="btn-refresh" title="更新">⟳</button>
       <button class="icon-btn" id="btn-theme" title="表示切替">◐</button>
@@ -1168,6 +1169,31 @@ async function rakutenShipFromDrawer(){
     else toast("失敗: "+rkMsg(r)); }
   catch(e){ toast("通信エラー"); }
 }
+async function honjitsuRun(){
+  const today=new Date().toISOString().slice(0,10);
+  const todayYmd=today.replace(/-/g,"");
+  const targets=state.orders.filter(o=>o.seinoOkurijoNo&&String(o.seinoShukkaDate||"")===todayYmd);
+  const rkCount=targets.filter(o=>o.mall==="rakuten"&&!o.seinoNotified).length;
+  const msg="📦 本日出す（"+today+"）を実行します。\n\n"
+    +"・本日発行した西濃送り状: "+targets.length+"件\n"
+    +"・楽天へ発送処理（発送完了メール送信）: "+rkCount+"件\n"
+    +"・出荷一覧表を袋井支店へeFAX送信\n"
+    +"・西濃へWeb集荷依頼（当日16時希望・16時以降は翌営業日）\n\n"
+    +"よろしいですか？";
+  if(!confirm(msg)) return;
+  toast("本日出す処理を実行中…");
+  try{
+    const r=await apiCall({action:"honjitsu"});
+    if(!r.ok){ toast("失敗: "+(r.error||"")); return; }
+    const rkNg=(r.rakuten||[]).filter(x=>!x.ok);
+    let s="✅ 対象"+r.targets+"件";
+    s+=" / 楽天通知 "+((r.rakuten||[]).length-rkNg.length)+"件OK"+(rkNg.length?("・"+rkNg.length+"件失敗"):"");
+    s+=" / FAX "+(r.efax&&r.efax.ok?"送信済":"失敗("+((r.efax&&r.efax.error)||"")+")");
+    s+=" / 集荷 "+(r.pickup&&r.pickup.queued?("依頼キュー済("+r.pickup.kosu+"個口"+r.pickup.weightKg+"kg・1分以内に送信)"):"対象なし");
+    alert(s+(rkNg.length?("\n\n楽天失敗:\n"+rkNg.map(x=>x.orderNo+" "+x.detail).join("\n")):""));
+    loadFromServer();
+  }catch(e){ toast("通信エラー"); }
+}
 function jumpToInquiryByOrder(oid){
   const o=getOrder(oid);
   const q=state.inquiries.find(x=>x.customer===o.customer || (x.orderNo&&x.orderNo===o.orderNo));
@@ -1451,7 +1477,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
 });
 // expose for inline onclick
-Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline,saveDocType});
+Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline,saveDocType,honjitsuRun});
 </script>
 </body>
 </html>
