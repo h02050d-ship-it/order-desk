@@ -307,9 +307,10 @@
     <div class="kpis" id="kpis"></div>
 
     <div class="tabs">
-      <button class="tab active" data-tab="orders">📋 受注ボード</button>
       <button class="tab" data-tab="ichiba">🏪 市場（FAX・メール）</button>
+      <button class="tab active" data-tab="orders">📋 EC受注ボード</button>
       <button class="tab" data-tab="inquiries">💬 問い合わせ</button>
+      <button class="tab" data-tab="mitsumori">💰 見積り</button>
     </div>
   </header>
 
@@ -861,9 +862,11 @@ function getInq(id){ return state.inquiries.find(q=>q.id===id); }
 function now(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
 
 function matchFilter(o){
-  if(state.tab==="ichiba"){ if(o.mall!=="ichiba") return false; }   // 市場タブ＝市場のみ
-  else if(o.mall==="ichiba") return false;                            // ECタブ＝市場を出さない
-  if(state.tab!=="ichiba" && state.mall!=="all" && o.mall!==state.mall) return false;
+  const isQuote=(o.docType==="見積り");
+  if(state.tab==="mitsumori"){ if(!isQuote) return false; }                       // 見積りタブ＝見積りのみ(市場・EC両方)
+  else if(state.tab==="ichiba"){ if(o.mall!=="ichiba"||isQuote) return false; }   // 市場タブ＝市場の注文(見積り除く)
+  else if(o.mall==="ichiba"||isQuote) return false;                                 // ECタブ＝市場・見積りを出さない
+  if(state.tab==="orders" && state.mall!=="all" && o.mall!==state.mall) return false;
   const s = state.search.trim().toLowerCase();
   if(!s) return true;
   const hay = [o.orderNo, o.customer, o.subject, (o.items?o.items.map(i=>i.name).join(" "):"")].join(" ").toLowerCase();
@@ -912,7 +915,7 @@ function renderOrders(){
     if(col.k==="done") cards.sort((a,b)=> (b.date||"").localeCompare(a.date||"")); // 注文日の新しい順（新しい注文が上）
     else cards.sort((a,b)=> (a.date||"").localeCompare(b.date||"")); // 新規〜出荷済は古い順（古い注文が上＝先に処理）
     const c=document.createElement("div"); c.className="col";
-    const colNote={new:"⏳ 配送・支払確認中", preparing:"✅ 加工OK", shipped:"🚚 集荷依頼済", done:"📦 引渡し完了"}[col.k]||"";
+    const colNote=(state.tab==="mitsumori")?({new:"⏳ 未対応", done:"✅ 回答済み"}[col.k]||""):({new:"⏳ 配送・支払確認中", preparing:"✅ 加工OK", shipped:"🚚 集荷依頼済", done:"📦 引渡し完了"}[col.k]||"");
     c.innerHTML=`<div class="col-h"><span class="dot" style="background:${col.dot}"></span>${col.label}${colNote?`<span class="col-note">${colNote}</span>`:''}<span class="cnt">${cards.length}</span></div>`;
     if(!cards.length){ c.insertAdjacentHTML("beforeend",`<div class="col-empty">—</div>`); }
     cards.forEach((o)=>{
@@ -1364,10 +1367,10 @@ function closeDrawer(){ $("#scrim").classList.remove("on"); $("#drawer").classLi
 function render(){
   renderKPIs();
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.tab===state.tab));
-  const isBoard=(state.tab==="orders"||state.tab==="ichiba");
+  const isBoard=(state.tab==="orders"||state.tab==="ichiba"||state.tab==="mitsumori");
   $("#view-orders").classList.toggle("hidden", !isBoard);
   $("#view-inquiries").classList.toggle("hidden", state.tab!=="inquiries");
-  const seg=document.getElementById("mall-seg"); if(seg) seg.style.visibility=(state.tab==="ichiba")?"hidden":"visible"; // 市場タブではモール絞込を隠す
+  const seg=document.getElementById("mall-seg"); if(seg) seg.style.visibility=(state.tab==="orders")?"visible":"hidden"; // モール絞込はEC受注のみ
   $("#fab-label").textContent = isBoard?"注文を追加":"問い合わせを追加";
   if(isBoard) renderOrders(); else renderInquiries();
   document.querySelectorAll("#mall-seg button").forEach(b=>b.classList.toggle("active", b.dataset.mall===state.mall));
