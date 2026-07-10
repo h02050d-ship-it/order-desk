@@ -628,21 +628,35 @@ function loadFareInline(btn){
   const box=btn.parentElement.querySelector('.fare-inline'); if(!box) return;
   if(box.dataset.loaded){ box.style.display=(box.style.display==='none')?'block':'none'; return; }
   btn.textContent='🧮 計算中…';
+  const o=getOrder(state.drawer.id);
+  // サマリ表示欄＋裏で動かす非表示iframe（必要情報だけ表示・「詳細」で全画面展開）
+  const sum=document.createElement('div'); sum.className='fare-sum'; sum.style.display='none'; box.appendChild(sum);
   const f=document.createElement('iframe');
   f.src=btn.dataset.fare; f.setAttribute('scrolling','no');
-  f.style.cssText='width:100%;border:1px solid var(--line,#ddd);border-radius:8px;height:140px;background:#fff';
-  f.onload=function(){
+  f.style.cssText='width:100%;border:1px solid var(--line,#ddd);border-radius:8px;height:140px;background:#fff;display:none';
+  if(window._fareMsgHandler) window.removeEventListener('message', window._fareMsgHandler);
+  window._fareMsgHandler=(ev)=>{
+    const d=ev.data; if(!d||d.type!=='fareSummary') return;
+    const rows=[];
+    if(o&&o.custType==="個人"&&d.officeName){ const b=String(d.officeName).replace(/営業所$|支店$/,''); rows.push(`<div class="prep-line"><span>🏢 支店止め</span><span><b>${esc(b)}支店止め</b>${d.officeDist?`（${esc(d.officeDist)}）`:""}</span></div>`); }
+    if(d.total) rows.push(`<div class="prep-line"><span>💰 送料（税込）</span><span style="font-weight:800;font-size:15px">${esc(d.total)}</span></div>`);
+    if(!rows.length) return;
+    sum.innerHTML=rows.join('')+`<div style="text-align:right;margin-top:4px"><a href="#" onclick="event.preventDefault();const fr=this.closest('.fare-inline').querySelector('iframe');fr.style.display=(fr.style.display==='none')?'block':'none'" style="font-size:11px;color:var(--muted)">🔍 詳細（内訳・営業所一覧）を開閉</a></div>`;
+    sum.style.display='block';
     btn.textContent='🧮 運賃・営業所（再計算/開閉）';
+  };
+  window.addEventListener('message', window._fareMsgHandler);
+  f.onload=function(){
     try{
       const doc=f.contentDocument;
       const resize=()=>{ const h=Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight); if(h>40) f.style.height=(h+18)+'px'; };
       resize();
-      // 営業所検索・運賃計算は非同期で後から伸びるので追従させる
       try{ new f.contentWindow.ResizeObserver(resize).observe(doc.body); }catch(e){}
       let t=0; const iv=setInterval(()=>{ resize(); if(++t>15) clearInterval(iv); }, 400);
     }catch(e){ f.style.height='760px'; }
   };
   box.appendChild(f); box.dataset.loaded='1';
+  setTimeout(()=>{ if(sum.style.display==='none'){ f.style.display='block'; btn.textContent='🧮 運賃・営業所（再計算/開閉）'; } }, 7000); // サマリが来ない時は従来表示
 }
 function rkProgressLabel(o){ if(o.mall!=="rakuten") return ""; return RK_PROGRESS_LABEL[o.progress] || "注文確認待ち"; }
 function ageDays(o){ const d=new Date(String(o.date||"").replace(" ","T")); return isNaN(d)?0:Math.floor((Date.now()-d.getTime())/86400000); }
