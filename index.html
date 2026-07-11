@@ -378,6 +378,10 @@ const O_STATUS = [
 ];
 const O_NEXT = {new:"preparing", preparing:"shipped", shipped:"done", done:null};
 const O_NEXT_LABEL = {new:"▶ 出荷準備へ", preparing:"▶ 出荷済へ", shipped:"▶ 完了へ"};
+// 市場は加工予定表と同じ流れ（登録→製造中、予定表の製造完了→製造完了、出荷完了→出荷完了）
+const ICHIBA_LABEL = {new:"新規注文", preparing:"製造中", shipped:"製造完了", done:"出荷完了"};
+const ICHIBA_NEXT_LABEL = {new:"▶ 製造中へ", preparing:"▶ 製造完了へ", shipped:"▶ 出荷完了へ"};
+const stLabel=(o,k)=> (o&&o.mall==="ichiba"?ICHIBA_LABEL[k]:(O_STATUS.find(s=>s.k===k)||{}).label)||k;
 const Q_STATUS = [
   {k:"todo",  label:"未対応", cls:"todo"},
   {k:"doing", label:"対応中", cls:"doing"},
@@ -789,9 +793,34 @@ async function autoKakouSync(){
       toast("🪵 加工予定表: "+orderName(o)+" "+(r.written?"登録"+r.written+"行":"")+(r.skipped?"（既存"+r.skipped+"スキップ）":""));
     }
     for(const o of active.filter(o=>o.kakouAdded)){ await kakouUpdateStatus_(o); } // 既登録は確認ステータスだけ追従更新
-    if(inserts.length) render();
+    const moved=await ichibaKakouStatusSync(); // 市場：予定表の移動（製造完了/出荷完了）に追従
+    if(inserts.length||moved) render();
   }catch(e){ console.warn("加工予定表 同期失敗",e); }
   finally{ _kakouBusy=false; }
+}
+// 市場注文：加工予定表の行の状態からステータスを前進させる（後退はしない・手動移動は尊重）
+// 全行アーカイブ＝出荷完了、全行が製造順9(製造完了)＝製造完了、行あり＝製造中
+async function ichibaKakouStatusSync(){
+  const targets=state.orders.filter(o=>o.mall==="ichiba" && o.kakouAdded && !isTestOrder(o) && o.status!=="done");
+  if(!targets.length) return 0;
+  const snap=await kakouDb.ref("items").once("value"); const items=snap.val()||{};
+  const RANK={new:0, preparing:1, shipped:2, done:3};
+  let moved=0;
+  for(const o of targets){
+    const pre=("od_"+String(o.id||o.orderNo)+"_").replace(/[.#$/\[\]:]/g,"_");
+    const rows=Object.keys(items).filter(k=>k.indexOf(pre)===0).map(k=>items[k]);
+    if(!rows.length) continue; // 行が見つからない（手入力運用や削除）は触らない
+    let target="preparing";
+    if(rows.every(r=>r.archived==="1")) target="done";
+    else if(rows.every(r=>(parseInt(r.order||"0",10)||0)>=9||r.archived==="1")) target="shipped";
+    if(RANK[target]>(RANK[o.status]||0)){
+      o.status=target; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.status=target;
+      apiPost({action:"order", id:o.id, status:target});
+      moved++;
+    }
+  }
+  if(moved) toast("🏪 市場 "+moved+"件を加工予定表に合わせて移動しました");
+  return moved;
 }
 // 既登録行の「実際(確認ステータス)」だけを追従更新。スタッフが数値等を入れていたら触らない
 async function kakouUpdateStatus_(o){
@@ -849,6 +878,10 @@ async function kakouRegisterNow(){ // ドロワーの手動登録
     if(!confirm("【加工予定表に登録】原本と見比べて正しいですか？\n\n"+lines+"\n\n間違いがあれば登録せず、加工予定表で手入力してください。")) return;
   }
   const r=await kakouWrite_(o);
+  if(o.mall==="ichiba" && o.status==="new"){ // 市場：登録＝製造中へ（以降は予定表と連動）
+    o.status="preparing"; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.status="preparing";
+    apiPost({action:"order", id:o.id, status:"preparing"});
+  }
   toast("🪵 加工予定表: "+(r.written?"登録"+r.written+"行":"登録なし")+(r.skipped?"（既存行あり"+r.skipped+"件スキップ）":""));
   render(); openOrderDrawer(o.id);
 }
@@ -916,8 +949,12 @@ function renderOrders(){
     if(col.k==="done") cards.sort((a,b)=> (b.date||"").localeCompare(a.date||"")); // 注文日の新しい順（新しい注文が上）
     else cards.sort((a,b)=> (a.date||"").localeCompare(b.date||"")); // 新規〜出荷済は古い順（古い注文が上＝先に処理）
     const c=document.createElement("div"); c.className="col";
-    const colNote=(state.tab==="mitsumori")?({new:"⏳ 未対応", done:"✅ 回答済み"}[col.k]||""):({new:"⏳ 配送・支払確認中", preparing:"✅ 加工OK", shipped:"🚚 集荷依頼済", done:"📦 引渡し完了"}[col.k]||"");
-    c.innerHTML=`<div class="col-h"><span class="dot" style="background:${col.dot}"></span>${col.label}${colNote?`<span class="col-note">${colNote}</span>`:''}<span class="cnt">${cards.length}</span></div>`;
+    const isIchibaTab=(state.tab==="ichiba");
+    const colNote=(state.tab==="mitsumori")?({new:"⏳ 未対応", done:"✅ 回答済み"}[col.k]||"")
+      :isIchibaTab?({new:"⏳ 予定表 登録前", preparing:"🪵 予定表 登録済み", shipped:"🪵 予定表と連動", done:"🪵 予定表と連動"}[col.k]||"")
+      :({new:"⏳ 配送・支払確認中", preparing:"✅ 加工OK", shipped:"🚚 集荷依頼済", done:"📦 引渡し完了"}[col.k]||"");
+    const colLabel=isIchibaTab?(ICHIBA_LABEL[col.k]||col.label):col.label;
+    c.innerHTML=`<div class="col-h"><span class="dot" style="background:${col.dot}"></span>${colLabel}${colNote?`<span class="col-note">${colNote}</span>`:''}<span class="cnt">${cards.length}</span></div>`;
     if(!cards.length){ c.insertAdjacentHTML("beforeend",`<div class="col-empty">—</div>`); }
     cards.forEach((o)=>{
       const el=orderCard(o);
@@ -958,7 +995,7 @@ function orderCard(o){
       ${o.memo?'<span class="pill memo">📝 メモ</span>':''}
       ${o.tracking?'<span class="pill memo">🚚 '+esc(String(o.tracking).split(" ")[0])+'</span>':''}
     </div>
-    ${(next && o.mall!=="rakuten")?`<button class="nextbtn" data-next="${o.id}">${O_NEXT_LABEL[o.status]}</button>`:''}
+    ${(next && o.mall!=="rakuten")?`<button class="nextbtn" data-next="${o.id}">${o.mall==="ichiba"?ICHIBA_NEXT_LABEL[o.status]:O_NEXT_LABEL[o.status]}</button>`:''}
   `;
   el.addEventListener("click",e=>{
     if(e.target.closest("[data-next]")){ e.stopPropagation(); advanceOrder(o.id); return; }
@@ -969,7 +1006,7 @@ function orderCard(o){
 function advanceOrder(id){
   const o=getOrder(id); const next=O_NEXT[o.status]; if(!next) return;
   o.status=next; saveOrderOverlay(o);
-  toast("「"+O_STATUS.find(s=>s.k===next).label+"」へ移動しました");
+  toast("「"+stLabel(o,next)+"」へ移動しました");
   render();
 }
 
@@ -1093,7 +1130,7 @@ function openOrderDrawer(id){
     `}`}
     <div class="sec-t">ステータス</div>
     <div class="status-pick" id="o-status">
-      ${O_STATUS.map(s=>`<button data-s="${s.k}" class="${o.status===s.k?'active':''}">${s.label}</button>`).join("")}
+      ${O_STATUS.map(s=>`<button data-s="${s.k}" class="${o.status===s.k?'active':''}">${stLabel(o,s.k)}</button>`).join("")}
     </div>
     <div class="sec-t">注文内容</div>
     <table class="items-t"><thead><tr><th>商品</th><th class="num">数</th><th class="num">金額</th></tr></thead><tbody>${rows}</tbody></table>
