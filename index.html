@@ -1229,7 +1229,7 @@ async function honjitsuRun(){
   const targets=state.orders.filter(o=>o.seinoOkurijoNo&&String(o.seinoShukkaDate||"")===todayYmd);
   const rkCount=targets.filter(o=>o.mall==="rakuten"&&!o.seinoNotified).length;
   const msg="📦 本日出す（"+today+"）を実行します。\n\n"
-    +"・本日発行した西濃送り状: "+targets.length+"件\n"
+    +"・本日発行した西濃送り状: "+targets.length+"件（＋送り状デスク発行分も集荷に合算）\n"
     +"・楽天へ発送処理（発送完了メール送信）: "+rkCount+"件\n"
     +"・出荷一覧表を袋井支店へeFAX送信\n"
     +"・西濃へWeb集荷依頼（当日16時希望／15時以降の実行は翌営業日16時）\n\n"
