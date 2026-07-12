@@ -644,6 +644,9 @@ function loadFareInline(btn){
   if(window._fareMsgHandler) window.removeEventListener('message', window._fareMsgHandler);
   window._fareMsgHandler=(ev)=>{
     const d=ev.data; if(!d||d.type!=='fareSummary') return;
+    if(o) window._fareLast={id:o.id, total:d.total||'', officeName:d.officeName||'', officeAddr:d.officeAddr||'', officeDist:d.officeDist||''}; // メール文面生成・支店住所表示用
+    const ba=document.getElementById('branch-addr'); if(ba&&d.officeAddr) ba.textContent=d.officeAddr; // 届け先欄の支店住所を更新
+    const bl=document.getElementById('branch-line'); if(bl&&d.officeName) bl.textContent='西濃運輸 '+String(d.officeName).replace(/営業所$|支店$/,'')+'支店止め';
     const rows=[];
     if(o&&o.custType==="個人"&&d.officeName){ const b=String(d.officeName).replace(/営業所$|支店$/,''); rows.push(`<div class="prep-line"><span>🏢 支店止め</span><span><b>${esc(b)}支店止め</b>${d.officeDist?`（${esc(d.officeDist)}）`:""}</span></div>`); }
     if(d.total) rows.push(`<div class="prep-line"><span>💰 送料（税込）</span><span style="font-weight:800;font-size:15px">${esc(d.total)}</span></div>`);
@@ -886,6 +889,27 @@ async function kakouRegisterNow(){ // ドロワーの手動登録
   toast("🪵 加工予定表: "+(r.written?"登録"+r.written+"行":"登録なし")+(r.skipped?"（既存行あり"+r.skipped+"件スキップ）":""));
   render(); openOrderDrawer(o.id);
 }
+// 楽天2m案件の配送確認メール文面を生成（個人=支店止めテンプレ/法人=1〜5確認テンプレ）。コピーのみ・送信はしない
+function genConfirmMail(){
+  const o=getOrder(state.drawer.id); if(!o) return;
+  const f=(window._fareLast&&window._fareLast.id===o.id)?window._fareLast:null;
+  if(!f||!f.total){ toast("先に「🧮 運賃ツールで送料計算」を押してください（送料・支店を文面に入れるため）"); return; }
+  const itemsTxt=(o.items||[]).map(it=>"・"+cleanItem(it.name)+" ×"+it.qty).join("\n");
+  let body="";
+  if(o.custType==="個人"){
+    const br=String(f.officeName||o.branch||"").replace(/営業所$|支店$/,"");
+    body="（株）林材木店と申します。\nこの度はご注文ありがとうございます。\n\n配送についてご確認したい点がございます。\n\n配送方法で西濃運輸個人様利用（宅配不可支店止め）をお選びいただいております。\n配送先の支店は西濃運輸　"+br+"支店を予定しております。\n住所："+(f.officeAddr||"")+"\n送料："+f.total+"（税込み）\n\n上記の支店と送料で問題ないかご返信をお願い致します。\n送料と支店に問題がなければ、下記注文内容で生産発送をさせていただきます。\n\nお手数ですが、ご返信宜しくお願い致します。\n\n【ご注文内容】\n"+itemsTxt;
+  } else {
+    // 法人名の抽出（届け先住所に会社名が入っている場合→2番に記載・3番に住所。なければ空白）
+    const corp=(String(o.shipAddr||"").match(/(株式会社|有限会社|合同会社|合資会社|（株）|（有）|\(株\)|\(有\))\S*|\S*(工務店|建設|建築|商店|木材店?|製材所?|組合|工業|工房|ｾﾝﾀｰ|センター)/)||[])[0]||"";
+    body="（株）林材木店と申します。\nこの度はご注文ありがとうございます。\n\n配送についてご確認したい点がございます。\n下記の内容をご確認の上、1～5の回答をご返信ください。\n\n\n１.送料："+f.total+"(税込)\n\n２.配送先の屋号、会社名\n"+corp+"\n\n３.配送先（屋号、会社名の記載がある住所）\n"+(corp?("〒"+(o.shipZip||"")+" "+String(o.shipAddr||"")):"")+"\n\n４.(2階以上の場合)1階引渡しになります\n\n５.(配送先が現場の場合)送料+別途料金が発生します。\n現場卸しの場合はご連絡お願い致します。\n\n\n確認ができ次第、下記注文内容で生産発送をさせていただきます。\nお手数ですが、ご返信宜しくお願い致します。\n\n【ご注文内容】\n"+itemsTxt;
+  }
+  const box=document.getElementById("mail-preview");
+  if(box){ box.value=body; box.style.display="block"; box.style.height="340px"; }
+  navigator.clipboard.writeText(body)
+    .then(()=>toast("📋 確認メール文面をコピーしました（R-Messeに貼り付け→送信後にメール送信済みチェック）"))
+    .catch(()=>toast("文面を生成しました（下のプレビューからコピーしてください）"));
+}
 function saveDocType(v){ // 市場：注文/見積り/要確認 の切替
   const o=getOrder(state.drawer.id); if(!o) return;
   o.docType=v; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.docType=v;
@@ -1004,8 +1028,18 @@ function orderCard(o){
   });
   return el;
 }
-function advanceOrder(id){
+async function advanceOrder(id){
   const o=getOrder(id); const next=O_NEXT[o.status]; if(!next) return;
+  // 市場：新規→出荷準備 は内容・返信の確認ポップアップ→OKで加工予定表に登録してから移動
+  if(o.mall==="ichiba" && o.status==="new" && next==="preparing"){
+    const rows=kakouRowsFor(o);
+    const lines=rows.length?rows.map(r=>`・${r.hinmei} ${r.grade} ${r.thickness}×${r.width}×${r.length} 入数${r.qty}×予定${r.planned}`).join("\n"):"（寸法の自動抽出なし → 加工予定表へは手入力してください）";
+    if(!confirm("【出荷準備へ移動】"+(o.customer||"")+"\n\n✔ 注文内容を原本と見比べて確認しましたか？\n✔ お客様への返信（受注のご連絡）は済みましたか？\n\n─ 加工予定表に登録する内容 ─\n"+lines+"\n\nOKを押すと加工予定表に登録して移動します。")) return;
+    if(rows.length && !o.kakouAdded && kakouDb && kakouAuthed){
+      try{ const r=await kakouWrite_(o); toast("🪵 加工予定表: 登録"+(r.written||0)+"行"+(r.skipped?"（既存"+r.skipped+"スキップ）":"")); }
+      catch(e){ toast("⚠️ 加工予定表への登録に失敗（手動で登録してください）"); }
+    }
+  }
   o.status=next; saveOrderOverlay(o);
   toast("「"+stLabel(o,next)+"」へ移動しました");
   render();
@@ -1114,9 +1148,18 @@ function openOrderDrawer(id){
     </div>`}
     ${(o.mall!=="ichiba"&&needsFreight(o))?`<div class="sec-t">運賃・営業所（2m以上は送料確認要）</div>
     <div class="prep-box">
-      ${o.shipAddr?`<div class="prep-line"><span>📍 届け先</span><span style="text-align:right">〒${esc(o.shipZip)}<br>${esc(o.shipAddr)}</span></div>`:`<div style="font-size:12px;color:var(--muted)">届け先住所は未取得（次回取込で反映されます）</div>`}
+      ${(o.custType==="個人"&&shipCarrier(o)==="西濃")?`
+      <div style="border:1.5px solid #e6910044;background:#e6910010;border-radius:8px;padding:8px 10px;margin-bottom:6px">
+        <div style="font-size:11px;color:var(--muted);font-weight:700">🚚 送り状の届け先（支店止め）</div>
+        <div id="branch-line" style="font-size:15px;font-weight:800;margin-top:2px">${o.branch?'西濃運輸 '+esc(o.branch)+'支店止め':'西濃運輸 支店止め（運賃ツールで判定）'}</div>
+        <div id="branch-addr" style="font-size:12.5px;font-weight:700;margin-top:2px">（支店住所は運賃ツール実行で表示）</div>
+      </div>
+      ${o.shipAddr?`<div class="prep-line" style="opacity:.7"><span>📍 参考:お客様住所</span><span style="text-align:right">〒${esc(o.shipZip)}<br>${esc(o.shipAddr)}</span></div>`:""}`
+      :o.shipAddr?`<div class="prep-line"><span>📍 届け先</span><span style="text-align:right">〒${esc(o.shipZip)}<br>${esc(o.shipAddr)}</span></div>`:`<div style="font-size:12px;color:var(--muted)">届け先住所は未取得（次回取込で反映されます）</div>`}
       <button class="btn primary" style="width:100%;margin-top:8px" data-fare="${fareUrl(o)}&embed=1" onclick="loadFareInline(this)">🧮 運賃ツールで送料計算＋営業所検索</button>
       <div class="fare-inline" style="margin-top:8px"></div>
+      ${o.mall==="rakuten"?`<button class="btn ghost" style="width:100%;margin-top:8px" onclick="genConfirmMail()">📧 配送確認メール文面を生成（コピー）</button>
+      <textarea id="mail-preview" class="txt" style="display:none;margin-top:8px;font-size:12px;line-height:1.6"></textarea>`:""}
       ${o.custType==="個人"?`<div class="prep-line" style="margin-top:6px"><span>🏢 支店止め</span><span class="${o.branch?'done':'wait'}">${o.branch?esc(o.branch)+"支店止め（自動判定）":"最寄り営業所を判定中…"}</span></div>`:""}
       <div style="font-size:11px;color:var(--muted);margin-top:6px">押すと裏で運賃ツールを実行し、送料・営業所をこの下に表示します（別タブは開きません）。</div>
     </div>`:""}
@@ -1531,7 +1574,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
 });
 // expose for inline onclick
-Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline,saveDocType,honjitsuRun,seinoPdfView});
+Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline,saveDocType,honjitsuRun,seinoPdfView,genConfirmMail});
 </script>
 </body>
 </html>
