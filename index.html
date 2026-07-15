@@ -1184,8 +1184,8 @@ function openOrderDrawer(id){
     <table class="items-t"><thead><tr><th>商品</th><th class="num">数</th><th class="num">金額</th></tr></thead><tbody>${rows}</tbody></table>
     <div class="total-row"><span>合計</span><span>${yen(o.total)}</span></div>
 
-    <label class="fld">配送伝票番号</label>
-    <input class="txt" id="o-track" placeholder="例：西濃 1234-5678-9012" value="${esc(o.tracking)}" />
+    ${o.mall!=="rakuten"?`<label class="fld">配送伝票番号</label>
+    <input class="txt" id="o-track" placeholder="例：西濃 1234-5678-9012" value="${esc(o.tracking)}" />`:""}
     <label class="fld">メモ（社内用）</label>
     <textarea class="txt" id="o-memo" style="min-height:70px" placeholder="領収書の宛名、特記事項など">${esc(o.memo)}</textarea>
     ${rkWriteback}
@@ -1204,7 +1204,7 @@ function saveOrderFromDrawer(){
   const o=getOrder(state.drawer.id);
   const sel=$("#o-status").querySelector("button.active");
   o.status = sel?sel.dataset.s:o.status;
-  o.tracking = $("#o-track").value.trim();
+  const trackEl=$("#o-track"); if(trackEl) o.tracking = trackEl.value.trim(); // 楽天は下の書き戻し欄が担当（上は非表示）
   o.memo = $("#o-memo").value.trim();
   o.customer = $("#o-cust").value.trim();
   saveOrderOverlay(o);
