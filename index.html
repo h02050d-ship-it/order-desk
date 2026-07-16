@@ -143,11 +143,13 @@
   [data-theme="dark"] .pill.cust-indiv{background:#1f2e1f;color:#9fd4a2;border-color:#34492f}
   .pill.kakou-ok{background:#e7f6ef; color:#177a59; border-color:#bce6d3; font-weight:800}
   .pill.pay-wait{background:#fdecec; color:#c0392b; border-color:#f5c6c2; font-weight:800}
+  .pill.kakou-ng{background:#c0392b; color:#fff; border-color:#c0392b; font-weight:800}
   .pill.ship-wait{background:#fff4e5; color:#a06a14; border-color:#f3d9a8; font-weight:800}
   .pill.mail-wait{background:#fff0f0; color:#b3261e; border-color:#f3c2bd; font-weight:800}
   [data-theme="dark"] .pill.mail-wait{background:#3a2422;color:#ff9b91;border-color:#5a3330}
   [data-theme="dark"] .pill.kakou-ok{background:#1f3a30;color:#7fe0b8;border-color:#34492f}
   [data-theme="dark"] .pill.pay-wait{background:#3a2422;color:#ff9b91;border-color:#5a3330}
+  [data-theme="dark"] .pill.kakou-ng{background:#8e2a1f;color:#fff;border-color:#8e2a1f}
   [data-theme="dark"] .pill.ship-wait{background:#332a18;color:#e3b65f;border-color:#5a4a26}
   .prep-box{background:var(--panel2); border:1px solid var(--line); border-radius:11px; padding:11px 12px; margin:2px 0 4px}
   .prep-box.ok{background:#eef9f3; border-color:#bce6d3}
@@ -1007,7 +1009,7 @@ function renderOrders(){
     const isIchibaTab=(state.tab==="ichiba");
     const colNote=(state.tab==="mitsumori")?({new:"⏳ 未対応", done:"✅ 回答済み"}[col.k]||"")
       :isIchibaTab?({new:"⏳ 予定表 登録前", preparing:"🪵 予定表 登録済み", shipped:"🪵 予定表と連動", done:"🪵 予定表と連動"}[col.k]||"")
-      :({new:"⏳ 配送・支払確認中", preparing:"✅ 加工OK", shipped:"🚚 集荷依頼済<br><span style='font-size:10px;opacity:.8'>📦 引渡しはまだ完了していません</span>", done:"📦 引渡し完了"}[col.k]||"");
+      :({new:"⏳ 配送・支払確認中<br><span style='font-size:10px;opacity:.85'>🚫 確認が終わるまで加工NG</span>", preparing:"✅ 加工OK", shipped:"🚚 集荷依頼済<br><span style='font-size:10px;opacity:.8'>📦 引渡しはまだ完了していません</span>", done:"📦 引渡し完了"}[col.k]||"");
     const colLabel=isIchibaTab?(ICHIBA_LABEL[col.k]||col.label):col.label;
     c.innerHTML=`<div class="col-h"><span class="dot" style="background:${col.dot}"></span>${colLabel}${colNote?`<span class="col-note">${colNote}</span>`:''}<span class="cnt">${cards.length}</span></div>`;
     if(!cards.length){ c.insertAdjacentHTML("beforeend",`<div class="col-empty">—</div>`); }
@@ -1042,7 +1044,7 @@ function orderCard(o){
       ${(needsFreight(o)&&o.status==="new")?'<span class="pill warn">🚚 運賃見積り(2m〜)</span>':''}
       ${(o.mall==="rakuten"&&o.status==="new"&&!o.mailSent&&needsShipConfirm(o))?'<span class="pill mail-wait">📧 メール未送信</span>':''}
       ${o.mall==="ichiba"?(('<span class="pill '+(o.docType==="注文"?"doc-order":o.docType==="見積り"?"doc-quote":"doc-check")+'">'+(o.docType==="注文"?"📝 注文":o.docType==="見積り"?"💰 見積り":"❓ 要確認")+'</span>')+('<span class="pill">'+(o.src==="mail"?"📧 メール":"📠 FAX")+'</span>')):""}
-      ${(o.mall!=="ichiba"&&o.status==="new")?(((needsShipConfirm(o)&&!effShipConfirmed(o))?'<span class="pill ship-wait">🚚 配送未確認</span>':'')+((!isPaidOk(o))?'<span class="pill pay-wait">💰 支払未確認</span>':'')+(kakouReady(o)?'<span class="pill kakou-ok">✅ 加工OK</span>':'')):""}
+      ${(o.mall!=="ichiba"&&o.status==="new")?((!kakouReady(o)?'<span class="pill kakou-ng">🚫 加工まだNG</span>':'')+((needsShipConfirm(o)&&!effShipConfirmed(o))?'<span class="pill ship-wait">🚚 配送未確認</span>':'')+((!isPaidOk(o))?'<span class="pill pay-wait">💰 支払未確認</span>':'')+(kakouReady(o)?'<span class="pill kakou-ok">✅ 加工OK</span>':'')):""}
       ${(o.kakouAdded&&o.status!=="done")?'<span class="pill kakou-ok">🪵 予定表済</span>':''}
       ${(o.mall==="rakuten"&&o.status==="new")?'<span class="pill prog">📋 '+esc(o.progress&&o.progress!==100?rkProgressLabel(o):"注文確定待ち")+'</span>':''}
       ${o.hasMsg?'<span class="pill msg">💬 問い合わせ</span>':''}
