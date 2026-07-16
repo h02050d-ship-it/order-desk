@@ -76,6 +76,9 @@
   .col-h .cnt{margin-left:auto; background:var(--panel); border:1px solid var(--line); color:var(--muted); font-size:11.5px; border-radius:20px; padding:1px 8px; font-weight:700}
   .col-h .col-note{background:#e7f6ef; color:#177a59; border:1px solid #bce6d3; font-size:10.5px; font-weight:800; border-radius:5px; padding:0 6px}
   [data-theme="dark"] .col-h .col-note{background:#1f3a30; color:#7fe0b8; border-color:#34492f}
+  .col-h .col-note2{margin-left:auto; background:#fdecec; color:#c0392b; border:1px solid #f5c6c2; font-size:10.5px; font-weight:800; border-radius:5px; padding:0 6px}
+  [data-theme="dark"] .col-h .col-note2{background:#3a2422; color:#ff9b91; border-color:#5a3330}
+  .col-h .col-note2 + .cnt{margin-left:0}
 
   .card{background:var(--panel); border:1px solid var(--line); border-radius:11px; padding:10px; margin-bottom:9px; box-shadow:var(--shadow); cursor:pointer; transition:transform .08s}
   .card:active{transform:scale(.99)}
@@ -1009,9 +1012,10 @@ function renderOrders(){
     const isIchibaTab=(state.tab==="ichiba");
     const colNote=(state.tab==="mitsumori")?({new:"⏳ 未対応", done:"✅ 回答済み"}[col.k]||"")
       :isIchibaTab?({new:"⏳ 予定表 登録前", preparing:"🪵 予定表 登録済み", shipped:"🪵 予定表と連動", done:"🪵 予定表と連動"}[col.k]||"")
-      :({new:"⏳ 配送・支払確認中<br><span style='font-size:10px;opacity:.85'>🚫 確認が終わるまで加工NG</span>", preparing:"✅ 加工OK", shipped:"🚚 集荷依頼済<br><span style='font-size:10px;opacity:.8'>📦 引渡しはまだ完了していません</span>", done:"📦 引渡し完了"}[col.k]||"");
+      :({new:"⏳ 配送・支払確認中", preparing:"✅ 加工OK", shipped:"🚚 集荷依頼済", done:"📦 引渡し完了"}[col.k]||"");
+    const colNote2=(state.tab==="orders")?({new:"🚫 加工NG", shipped:"📦 引渡し未完了"}[col.k]||""):"";
     const colLabel=isIchibaTab?(ICHIBA_LABEL[col.k]||col.label):col.label;
-    c.innerHTML=`<div class="col-h"><span class="dot" style="background:${col.dot}"></span>${colLabel}${colNote?`<span class="col-note">${colNote}</span>`:''}<span class="cnt">${cards.length}</span></div>`;
+    c.innerHTML=`<div class="col-h"><span class="dot" style="background:${col.dot}"></span>${colLabel}${colNote?`<span class="col-note">${colNote}</span>`:''}${colNote2?`<span class="col-note2">${colNote2}</span>`:''}<span class="cnt">${cards.length}</span></div>`;
     if(!cards.length){ c.insertAdjacentHTML("beforeend",`<div class="col-empty">—</div>`); }
     cards.forEach((o)=>{
       const el=orderCard(o);
@@ -1039,13 +1043,15 @@ function orderCard(o){
     <div class="items">${itemsSummaryHTML(o.items)}</div>
     <div class="flagrow">
       ${o.custType?'<span class="pill cust-'+(o.custType==="法人"?"corp":"indiv")+'">'+(o.custType==="法人"?"🏢 法人":("🏠 個人"+(shipCarrier(o)==="西濃"?(o.branch?"・<b>"+esc(o.branch)+"支店止め</b>":"<b>（支店止め）</b>"):"（宅配）")))+'</span>':''}
+      ${o.mall!=="ichiba"?'<span class="pill">🚚 '+esc(shipCarrier(o))+'</span>':''}
+      ${o.status==="shipped"?'<span class="pill ship-wait">📦 引渡し未完了</span>':''}
       ${o.remarks?'<span class="pill memo memo-on" title="備考: '+esc(o.remarks)+'">📝 備考あり</span>':''}
       ${o.deliveryDate?'<span class="pill date-spec">⏰ '+esc(o.deliveryDate)+' 着指定</span>':''}
       ${(needsFreight(o)&&o.status==="new")?'<span class="pill warn">🚚 運賃見積り(2m〜)</span>':''}
       ${(o.mall==="rakuten"&&o.status==="new"&&!o.mailSent&&needsShipConfirm(o))?'<span class="pill mail-wait">📧 メール未送信</span>':''}
       ${o.mall==="ichiba"?(('<span class="pill '+(o.docType==="注文"?"doc-order":o.docType==="見積り"?"doc-quote":"doc-check")+'">'+(o.docType==="注文"?"📝 注文":o.docType==="見積り"?"💰 見積り":"❓ 要確認")+'</span>')+('<span class="pill">'+(o.src==="mail"?"📧 メール":"📠 FAX")+'</span>')):""}
       ${(o.mall!=="ichiba"&&o.status==="new")?((!kakouReady(o)?'<span class="pill kakou-ng">🚫 加工まだNG</span>':'')+((needsShipConfirm(o)&&!effShipConfirmed(o))?'<span class="pill ship-wait">🚚 配送未確認</span>':'')+((!isPaidOk(o))?'<span class="pill pay-wait">💰 支払未確認</span>':'')+(kakouReady(o)?'<span class="pill kakou-ok">✅ 加工OK</span>':'')):""}
-      ${(o.kakouAdded&&o.status!=="done")?'<span class="pill kakou-ok">🪵 予定表済</span>':''}
+      ${(o.kakouAdded&&(o.status==="new"||o.status==="preparing"))?'<span class="pill kakou-ok">🪵 予定表済</span>':''}
       ${(o.mall==="rakuten"&&o.status==="new")?'<span class="pill prog">📋 '+esc(o.progress&&o.progress!==100?rkProgressLabel(o):"注文確定待ち")+'</span>':''}
       ${o.hasMsg?'<span class="pill msg">💬 問い合わせ</span>':''}
       ${o.memo?'<span class="pill memo">📝 メモ</span>':''}
