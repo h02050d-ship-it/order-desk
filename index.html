@@ -682,7 +682,7 @@ function shipCarrier(o){
 function needsShipConfirm(o){ return shipCarrier(o)==="西濃"; }
 // 加工準備：支払確認(楽天=API/ヤフー=当面手動扱い)＋配送確認(西濃のみ手動チェック)が揃えば加工OK
 // 判断軸: 出荷準備中以降に進んだ時点で「配送確認・メール送信」は済んでいる扱い（新規受注でのみ未確認がありうる）
-function isPaidOk(o){ return o.mall==="rakuten" ? !!o.paid : true; }
+function isPaidOk(o){ return (o.mall==="rakuten"||o.mall==="yahoo") ? !!o.paid : true; } // 楽天・ヤフーともAPIで入金状態を把握
 function effShipConfirmed(o){ return !!o.shipConfirmed || o.status!=="new"; }
 function kakouReady(o){ return isPaidOk(o) && (!needsShipConfirm(o) || effShipConfirmed(o)); }
 
@@ -919,9 +919,24 @@ function genConfirmMail(){
   }
   const box=document.getElementById("mail-preview");
   if(box){ box.value=body; box.style.display="block"; box.style.height="340px"; }
-  navigator.clipboard.writeText(body)
-    .then(()=>toast("📋 確認メール文面をコピーしました（R-Messeに貼り付け→送信後にメール送信済みチェック）"))
-    .catch(()=>toast("文面を生成しました（下のプレビューからコピーしてください）"));
+  const sb=document.getElementById("mail-send"), sn=document.getElementById("mail-send-note");
+  if(sb) sb.style.display="block"; if(sn) sn.style.display="block";
+  toast("文面を生成しました。内容を確認して「📨 送信」を押してください");
+}
+// プレビュー確認後にお客様（あんしんメルアド）へ送信。成功でメール送信済み✅
+async function sendConfirmMail(){
+  const o=getOrder(state.drawer.id); if(!o) return;
+  const body=(document.getElementById("mail-preview")?.value||"").trim();
+  if(!body){ toast("先に文面を生成してください"); return; }
+  if(!confirm("お客様に配送確認メールを送信します。\n\n宛先：お客様の楽天メルアド\nFrom：info@hayazai.com\n\nプレビューの内容で送信してよろしいですか？")) return;
+  toast("📨 送信中…");
+  try{
+    const r=await apiCall({action:"rkSendMail", id:o.id, orderNo:o.orderNo, subject:"【林材木店】ご注文・配送の確認", body});
+    if(r.ok){
+      o.mailSent=true; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.mailSent=true;
+      toast("📨 送信しました（メール送信済み✅）"); render(); openOrderDrawer(o.id);
+    } else toast("送信失敗: "+(r.error||""));
+  }catch(e){ toast("通信エラー"); }
 }
 function saveDocType(v){ // 市場：注文/見積り/要確認 の切替
   const o=getOrder(state.drawer.id); if(!o) return;
@@ -1136,7 +1151,7 @@ function openOrderDrawer(id){
       ${o.deliveryMethod?`<span class="k">配送方法</span><span class="v">${esc(o.deliveryMethod)}</span>`:""}
     </div>
     ${o.remarks?`<div class="remarks-box"><b>📝 お客様備考</b>\n${esc(o.remarks)}</div>`:""}
-    <label class="fld">お客様名${o.customer?'':'（ヤフーは自動取得できないため手入力）'}</label>
+    <label class="fld">お客様名</label>
     <input class="txt" id="o-cust" placeholder="例：堀上 / 佐藤" value="${esc(o.customer||'')}" />
     ${o.mall==="ichiba"?`
     <div class="sec-t">📄 原本・内容（${o.src==="mail"?"メール":"FAX"}）</div>
@@ -1156,7 +1171,9 @@ function openOrderDrawer(id){
         <button class="btn primary" style="width:100%;margin-top:8px" onclick="kakouRegisterNow()">🪵 内容を確認した → 加工予定表に登録（${kakouRowsFor(o).length}行）</button>`
       :`<div style="font-size:12px;color:var(--muted)">寸法を自動抽出できませんでした。<a href="${KAKOU_URL}" target="_blank">加工予定表を開いて手入力↗</a>してください。</div>`}
     </div>`:""}
-    ${o.mall==="ichiba"?"":`<div class="sec-t">加工の準備</div>
+    ${o.mall==="ichiba"?"":(kakouReady(o)&&(!kakouRowsFor(o).length||o.kakouAdded))?`<div class="sec-t">加工の準備</div>
+    <div class="prep-box ok"><div class="prep-line"><span>✅ <b>加工OK</b>（支払・配送 確認済）</span><span class="done">${(kakouRowsFor(o).length&&o.kakouAdded)?`🪵 <a href="${KAKOU_URL}" target="_blank" style="color:inherit">加工予定表 登録済み↗</a>`:''}</span></div></div>`
+    :`<div class="sec-t">加工の準備</div>
     <div class="prep-box ${kakouReady(o)?'ok':''}">
       <div class="prep-line"><span>💰 支払</span><span class="${isPaidOk(o)?'done':'wait'}">${isPaidOk(o)?'✅ 確認済':'⏳ 入金待ち'}</span></div>
       ${(needsShipConfirm(o)&&o.status==="new")?`
@@ -1180,8 +1197,10 @@ function openOrderDrawer(id){
       :o.shipAddr?`<div class="prep-line"><span>📍 届け先</span><span style="text-align:right">〒${esc(o.shipZip)}<br>${esc(o.shipAddr)}</span></div>`:`<div style="font-size:12px;color:var(--muted)">届け先住所は未取得（次回取込で反映されます）</div>`}
       <button class="btn primary" style="width:100%;margin-top:8px" data-fare="${fareUrl(o)}&embed=1" onclick="loadFareInline(this)">🧮 運賃ツールで送料計算＋営業所検索</button>
       <div class="fare-inline" style="margin-top:8px"></div>
-      ${o.mall==="rakuten"?`<button class="btn ghost" style="width:100%;margin-top:8px" onclick="genConfirmMail()">📧 配送確認メール文面を生成（コピー）</button>
-      <textarea id="mail-preview" class="txt" style="display:none;margin-top:8px;font-size:12px;line-height:1.6"></textarea>`:""}
+      ${o.mall==="rakuten"?`<button class="btn ghost" style="width:100%;margin-top:8px" onclick="genConfirmMail()">📧 配送確認メール文面を生成</button>
+      <textarea id="mail-preview" class="txt" style="display:none;margin-top:8px;font-size:12px;line-height:1.6"></textarea>
+      <button id="mail-send" class="btn primary" style="display:none;width:100%;margin-top:8px" onclick="sendConfirmMail()">📨 内容を確認した → お客様に送信</button>
+      <div id="mail-send-note" style="display:none;font-size:11px;color:var(--muted);margin-top:6px">宛先：お客様の楽天メルアド（From: info@hayazai.com）。文面は上のプレビューで編集できます。送信すると「メール送信済み」に自動チェックされます。</div>`:""}
     </div>`:""}
     ${o.mall==="ichiba"?"":`<div class="sec-t">送り状発行（${esc(shipCarrier(o))}）</div>
     ${shipCarrier(o)==="西濃"?`
@@ -1605,7 +1624,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
 });
 // expose for inline onclick
-Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,yahooShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline,saveDocType,honjitsuRun,seinoPdfView,genConfirmMail});
+Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,yahooShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline,saveDocType,honjitsuRun,seinoPdfView,genConfirmMail,sendConfirmMail});
 </script>
 </body>
 </html>
