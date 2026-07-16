@@ -1130,7 +1130,6 @@ function openOrderDrawer(id){
     <div style="font-size:11px;color:var(--muted);margin-top:6px">※送信するとヤフーからお客様へ「発送完了通知」が自動送信され、注文が「発送済」になります。</div>`;
   $("#d-body").innerHTML=`
     <div class="kv">
-      <span class="k">注文番号</span><span class="v">${esc(o.orderNo)}</span>
       <span class="k">受注日時</span><span class="v">${esc(o.date)}</span>
       ${o.deliveryDate?`<span class="k">お届け日指定</span><span class="v" style="color:#c0392b;font-weight:800">⏰ ${esc(o.deliveryDate)}</span>`:""}
       ${o.custType?`<span class="k">配送区分</span><span class="v">${o.custType==="法人"?"🏢 法人（宅配可）":"🏠 個人（最寄り支店止め）"}</span>`:""}
@@ -1159,17 +1158,17 @@ function openOrderDrawer(id){
     </div>`:""}
     ${o.mall==="ichiba"?"":`<div class="sec-t">加工の準備</div>
     <div class="prep-box ${kakouReady(o)?'ok':''}">
-      <div class="prep-line"><span>💰 支払</span><span class="${isPaidOk(o)?'done':'wait'}">${isPaidOk(o)?'✅ 確認済'+(o.mall!=='rakuten'?'（ヤフーは手動把握）':''):'⏳ 入金待ち（API把握）'}</span></div>
+      <div class="prep-line"><span>💰 支払</span><span class="${isPaidOk(o)?'done':'wait'}">${isPaidOk(o)?'✅ 確認済':'⏳ 入金待ち'}</span></div>
       ${(needsShipConfirm(o)&&o.status==="new")?`
       ${o.mall==="rakuten"?`<label class="prep-check"><input type="checkbox" id="o-mailsent" ${o.mailSent?'checked':''} onchange="toggleMailSent()"> 📧 配送確認メール送信済み（送料・お届けの案内メールを送った）</label>`:""}
       <label class="prep-check"><input type="checkbox" id="o-shipconf" ${o.shipConfirmed?'checked':''} onchange="toggleShipConfirm()"> 🚚 配送確認済み（送料・営業所・お届け方法をお客様と確認した）</label>`
-      :needsShipConfirm(o)?`<div class="prep-line"><span>🚚 配送</span><span class="done">✅ 確認済（出荷準備中以降は確認済み扱い）</span></div>`
-      :`<div class="prep-line"><span>🚚 配送</span><span class="done">✅ ${esc(shipCarrier(o))}（1m通常宅配 → 配送確認不要）</span></div>`}
-      <div class="prep-result">${kakouReady(o)?'✅ <b>加工OK</b>（加工して良い合図）':(needsShipConfirm(o)?'⏳ 支払と配送確認が揃うと「加工OK」になります':'⏳ 入金が確認できると「加工OK」になります')}</div>
+      :needsShipConfirm(o)?`<div class="prep-line"><span>🚚 配送</span><span class="done">✅ 確認済</span></div>`
+      :`<div class="prep-line"><span>🚚 配送</span><span class="done">✅ ${esc(shipCarrier(o))}（確認不要）</span></div>`}
+      <div class="prep-result">${kakouReady(o)?'✅ <b>加工OK</b>':(needsShipConfirm(o)?'⏳ 支払・配送確認で加工OK':'⏳ 入金確認で加工OK')}</div>
       ${kakouRowsFor(o).length?`<div class="prep-line" style="margin:8px 0 0"><span>🪵 加工予定表</span><span class="${o.kakouAdded?'done':'wait'}">${o.kakouAdded?`✅ 登録済み${kakouReady(o)?'':'（実際欄に'+(!isPaidOk(o)?'支払確認':'配送確認')+'表示中）'}（<a href="${KAKOU_URL}" target="_blank" style="color:inherit">開く↗</a>）`:'⏳ まもなく自動登録（注文段階で登録）'}</span></div>
       ${!o.kakouAdded?`<button class="btn ghost" style="margin-top:7px;width:100%" onclick="kakouRegisterNow()">🪵 加工予定表に今すぐ登録（${kakouRowsFor(o).length}行）</button>`:''}`:''}
     </div>`}
-    ${(o.mall!=="ichiba"&&needsFreight(o))?`<div class="sec-t">運賃・営業所（2m以上は送料確認要）</div>
+    ${(o.mall!=="ichiba"&&needsFreight(o))?`<div class="sec-t">運賃・営業所</div>
     <div class="prep-box">
       ${(o.custType==="個人"&&shipCarrier(o)==="西濃")?`
       <div style="border:1.5px solid #e6910044;background:#e6910010;border-radius:8px;padding:8px 10px;margin-bottom:6px">
@@ -1183,8 +1182,6 @@ function openOrderDrawer(id){
       <div class="fare-inline" style="margin-top:8px"></div>
       ${o.mall==="rakuten"?`<button class="btn ghost" style="width:100%;margin-top:8px" onclick="genConfirmMail()">📧 配送確認メール文面を生成（コピー）</button>
       <textarea id="mail-preview" class="txt" style="display:none;margin-top:8px;font-size:12px;line-height:1.6"></textarea>`:""}
-      ${o.custType==="個人"?`<div class="prep-line" style="margin-top:6px"><span>🏢 支店止め</span><span class="${o.branch?'done':'wait'}">${o.branch?esc(o.branch)+"支店止め（自動判定）":"最寄り営業所を判定中…"}</span></div>`:""}
-      <div style="font-size:11px;color:var(--muted);margin-top:6px">押すと裏で運賃ツールを実行し、送料・営業所をこの下に表示します（別タブは開きません）。</div>
     </div>`:""}
     ${o.mall==="ichiba"?"":`<div class="sec-t">送り状発行（${esc(shipCarrier(o))}）</div>
     ${shipCarrier(o)==="西濃"?`
@@ -1194,10 +1191,10 @@ function openOrderDrawer(id){
         <button class="btn ghost sm" style="flex:1" onclick="seinoPdfView('${esc(o.seinoOkurijoNo)}')">📄 送り状PDFを見る</button>
       </div>`:""}
       <button class="btn primary" style="width:100%" onclick="seinoIssueFromDrawer()">🚚 西濃で送り状発行＋印刷（${kouguchiTotal(o)}個口）</button>
-      <div style="font-size:11px;color:var(--muted);margin-top:6px">🟢 <b>本番</b>。押すと西濃へ出荷登録→<b>会社PCの HL-L2375DW でA5自動印刷</b>（押した時だけ・数十秒）。削除・訂正は右上の「KM2」ボタンから。</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">🟢 本番・会社PCでA5自動印刷。訂正は右上「KM2」から。</div>
     `:`
       <button class="btn ghost" style="width:100%" onclick="copyShipInfo()">🚚 送り状の宛先情報をコピー（${kouguchiTotal(o)}個口）</button>
-      <div style="font-size:11px;color:var(--muted);margin-top:6px">コピー後、Claudeに「<b>${esc(shipCarrier(o))}の送り状発行して</b>」と伝えるとe飛伝Ⅲに入力→印刷ポップアップ。印刷はA5・MFC-J6583CDWでCtrl+P。</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">コピー後「<b>${esc(shipCarrier(o))}の送り状発行して</b>」と依頼。</div>
     `}`}
     <div class="sec-t">ステータス</div>
     <div class="status-pick" id="o-status">
