@@ -868,7 +868,20 @@ async function seinoIssueFromDrawer(){
   try{
     const u=new URL(API_URL); u.searchParams.set("action","seinoissue"); u.searchParams.set("id",o.id); u.searchParams.set("email",CRED.email); u.searchParams.set("pass",CRED.pass);
     const res=await fetch(u.toString()).then(r=>r.json());
-    if(res.ok){ o.seinoOkurijoNo=res.okurijoNo; toast("✅ 送り状番号 "+res.okurijoNo+" 発行。HL-L2375DWで印刷します（数十秒）"); closeDrawer(); loadFromServer(); }
+    if(res.ok){
+      o.seinoOkurijoNo=res.okurijoNo; toast("✅ 送り状番号 "+res.okurijoNo+" 発行。HL-L2375DWで印刷します（数十秒）");
+      // 楽天注文で発送通知がまだなら「同時にしますか？」提案
+      if(o.mall==="rakuten" && !o.seinoNotified){
+        if(confirm("✅ 送り状 "+res.okurijoNo+" を発行しました。\n\n楽天の発送通知も同時にしますか？\n\n・追跡番号＝この送り状番号で発送処理\n・お客様へ「発送完了メール」が自動送信されます\n・注文が「発送済」になります")){
+          toast("楽天へ発送通知中…");
+          try{
+            const r2=await fetch(API_URL+"?action=seinoshipone&id="+encodeURIComponent(o.id)+"&email="+encodeURIComponent(CRED.email)+"&pass="+encodeURIComponent(CRED.pass)).then(r=>r.json());
+            toast(r2.ok?"✅ 楽天の発送通知も完了しました":("楽天発送通知 失敗: "+(r2.error||"")));
+          }catch(e){ toast("楽天発送通知 通信エラー"); }
+        }
+      }
+      closeDrawer(); loadFromServer();
+    }
     else { toast("発行失敗: "+(res.error||res.raw||"")); }
   }catch(e){ toast("通信エラー"); }
 }
