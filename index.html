@@ -459,6 +459,21 @@ let state = {
 function load(k, def){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):def; }catch(e){ return def; } }
 function save(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 
+/* 共通SSO: h02050d-ship-it.github.io の他ツールのログインを引き継ぐ */
+const SSO_KEY="hayazai_sso_cred";
+const SSO_PEERS=["hayazai_board_cred","hayazai_seiso_cred","hayazai_rulebook_cred","hayazai_kaizen_cred","notify_creds_v1","seinodesk_cred","faxdesk_cred","orderdesk_cred","nippou_cred"];
+function ssoFind_(){
+  const keys=[SSO_KEY].concat(SSO_PEERS);
+  for(const k of keys){
+    try{ const v=JSON.parse(localStorage.getItem(k)||"null");
+      if(v){ const email=v.email||v.e, pass=v.pass||v.p; if(email&&pass) return {email:String(email),pass:String(pass)}; }
+    }catch(e){}
+  }
+  return null;
+}
+function ssoWrite(email,pass){ try{ localStorage.setItem(SSO_KEY,JSON.stringify({email:email,pass:pass})); }catch(e){} }
+function ssoClear(){ try{ localStorage.removeItem(SSO_KEY); }catch(e){} }
+
 /* ---- サーバ(GAS)連携層。API_URLが空ならデモ＋localStorage ---- */
 const SERVER = { loaded:false, orders:[], inquiries:[], templates:[] };
 let CRED = null; // {email,pass}
@@ -497,7 +512,7 @@ async function loadFromServer(){
     const data = await res.json();
     if(!data.ok){
       if(data.error==="unauthorized"){ // 認証失敗→ログイン画面へ戻す
-        localStorage.removeItem(LS.cred); sessionStorage.removeItem(LS.cred); CRED=null;
+        localStorage.removeItem(LS.cred); sessionStorage.removeItem(LS.cred); ssoClear(); CRED=null;
         $("#app").classList.add("hidden"); $("#gate").classList.remove("hidden");
         $("#g-err").textContent="メールまたはパスワードが違います";
       } else { toast("取得に失敗しました"); }
@@ -1567,7 +1582,8 @@ function debounce(fn,ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(
    - デモ(API_URL未設定)＝メール+パスが入力されていれば入れる（資格情報はフロントに焼かない）。
    - 本番(API_URL設定)＝GAS側で BOARD_USERS 照合（salesboardと同方式）。ここでは送信のみ。 */
 function tryAutoLogin(){
-  const c=load(LS.cred,null);
+  let c=load(LS.cred,null);
+  if(!(c&&c.email&&c.pass)){ const s=ssoFind_(); if(s){ c=s; save(LS.cred,s); } }
   if(c&&c.email&&c.pass&&authOk(c.email,c.pass)){ enterApp(c.email, c.pass); return true; }
   return false;
 }
@@ -1581,10 +1597,10 @@ function doLogin(){
   const email=$("#g-email").value.trim(), pass=$("#g-pass").value;
   if(!authOk(email,pass)){ $("#g-err").textContent="メールまたはパスワードが違います"; return; }
   const keep=$("#g-keep").checked;
-  if(keep) save(LS.cred,{email,pass}); else { localStorage.removeItem(LS.cred); sessionStorage.setItem(LS.cred,JSON.stringify({email,pass})); }
+  if(keep){ save(LS.cred,{email,pass}); ssoWrite(email,pass); } else { localStorage.removeItem(LS.cred); sessionStorage.setItem(LS.cred,JSON.stringify({email,pass})); }
   enterApp(email, pass);
 }
-function logout(){ localStorage.removeItem(LS.cred); sessionStorage.removeItem(LS.cred); localStorage.removeItem(LS.serverCache); location.reload(); }
+function logout(){ localStorage.removeItem(LS.cred); sessionStorage.removeItem(LS.cred); localStorage.removeItem(LS.serverCache); ssoClear(); location.reload(); }
 function enterApp(email, pass){
   CRED = {email, pass};
   $("#gate").classList.add("hidden"); $("#app").classList.remove("hidden");
