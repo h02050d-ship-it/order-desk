@@ -707,6 +707,20 @@ function needsShipConfirm(o){ return shipCarrier(o)==="西濃"; }
 function isPaidOk(o){ return (o.mall==="rakuten"||o.mall==="yahoo") ? !!o.paid : true; } // 楽天・ヤフーともAPIで入金状態を把握
 function effShipConfirmed(o){ return !!o.shipConfirmed || o.status!=="new"; }
 function kakouReady(o){ return isPaidOk(o) && (!needsShipConfirm(o) || effShipConfirmed(o)); }
+// 注文フロー（配送確認 → 注文確定 → 支払い）の「一番直近でやる1ステップ」だけを返す。全部済み＝null（＝加工OK）。
+// 楽天は status=new の間が「注文確定(受注確定)待ち」。西濃2mのみ配送確認が要る。支払い＝入金(楽天API/ヤフー)。
+function nextStep(o){
+  if(needsShipConfirm(o) && !effShipConfirmed(o)) return {k:"ship",   label:"配送確認"};
+  if(o.mall==="rakuten" && o.status==="new")      return {k:"confirm",label:"注文確定"};
+  if(!isPaidOk(o))                                 return {k:"pay",    label:"支払確認"};
+  return null;
+}
+function workflowPillHTML(o){
+  const st=nextStep(o);
+  if(!st) return '<span class="pill kakou-ok">✅ 加工OK</span>';
+  const m={ship:['ship-wait','🚚'], confirm:['prog','📋'], pay:['pay-wait','💰']}[st.k]||['prog',''];
+  return '<span class="pill '+m[0]+'">'+m[1]+' '+st.label+'</span>';
+}
 
 /* ===== 加工予定表（kakou-yotei Firebase）自動入力 =====
    加工OK（支払＋配送確認済）になった注文を、確認なしで加工予定表に自動登録（人間が後でチェック）。
@@ -740,8 +754,8 @@ function isTestOrder(o){ return /(^|:)?TEST-/i.test(String(o.orderNo||"")) || /T
 function kakouRowsFor(o){
   if(isTestOrder(o)) return [];
   const rows=[]; const carrier=shipCarrier(o);
-  const payPend=!isPaidOk(o), shipPend=needsShipConfirm(o)&&!effShipConfirmed(o);
-  const actualVal=payPend?"支払確認":(shipPend?"配送確認":"-");  // 実際列＝確認ステータス（加工OKで"-"）
+  const st=nextStep(o);
+  const actualVal = st ? st.label : "-";  // 実際列＝次にやる1ステップ（配送確認→注文確定→支払確認の順・加工OKで"-"）
   (o.items||[]).forEach((it,idx)=>{
     const p=parseItem(it.name);
     const hin = /フローリング/.test(p.type)?"F" : /羽目板/.test(p.type)?"P" : /スノコ/.test(p.type)?"S" : "";
@@ -854,7 +868,7 @@ async function kakouUpdateStatus_(o){
     try{
       const snap=await kakouDb.ref("items/"+r._uid).once("value"); const ex=snap.val(); if(!ex) continue;
       const a=ex.actual;
-      if((a==="配送確認"||a==="支払確認"||a==="-"||a===""||a==null) && a!==r.actual){ await kakouDb.ref("items/"+r._uid+"/actual").set(r.actual); }
+      if((a==="配送確認"||a==="注文確定"||a==="支払確認"||a==="-"||a===""||a==null) && a!==r.actual){ await kakouDb.ref("items/"+r._uid+"/actual").set(r.actual); }
     }catch(e){}
   }
 }
@@ -1063,12 +1077,8 @@ function orderCard(o){
       ${o.status==="shipped"?'<span class="pill ship-wait">📦 引渡し未完了</span>':''}
       ${o.remarks?'<span class="pill memo memo-on" title="備考: '+esc(o.remarks)+'">📝 備考あり</span>':''}
       ${o.deliveryDate?'<span class="pill date-spec">⏰ '+esc(o.deliveryDate)+' 着指定</span>':''}
-      ${(needsFreight(o)&&o.status==="new")?'<span class="pill warn">🚚 運賃見積り(2m〜)</span>':''}
-      ${(o.mall==="rakuten"&&o.status==="new"&&!o.mailSent&&needsShipConfirm(o))?'<span class="pill mail-wait">📧 メール未送信</span>':''}
       ${o.mall==="ichiba"?(('<span class="pill '+(o.docType==="注文"?"doc-order":o.docType==="見積り"?"doc-quote":"doc-check")+'">'+(o.docType==="注文"?"📝 注文":o.docType==="見積り"?"💰 見積り":"❓ 要確認")+'</span>')+('<span class="pill">'+(o.src==="mail"?"📧 メール":"📠 FAX")+'</span>')):""}
-      ${(o.mall!=="ichiba"&&o.status==="new")?((!kakouReady(o)?'<span class="pill kakou-ng">🚫 加工まだNG</span>':'')+((needsShipConfirm(o)&&!effShipConfirmed(o))?'<span class="pill ship-wait">🚚 配送未確認</span>':'')+((!isPaidOk(o))?'<span class="pill pay-wait">💰 支払未確認</span>':'')+(kakouReady(o)?'<span class="pill kakou-ok">✅ 加工OK</span>':'')):""}
-      ${(o.kakouAdded&&(o.status==="new"||o.status==="preparing"))?'<span class="pill kakou-ok">🪵 予定表済</span>':''}
-      ${(o.mall==="rakuten"&&o.status==="new")?'<span class="pill prog">📋 '+esc(o.progress&&o.progress!==100?rkProgressLabel(o):"注文確定待ち")+'</span>':''}
+      ${(o.mall!=="ichiba"&&o.status==="new")?workflowPillHTML(o):""}
       ${o.hasMsg?'<span class="pill msg">💬 問い合わせ</span>':''}
       ${o.memo?'<span class="pill memo">📝 メモ</span>':''}
     </div>
