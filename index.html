@@ -665,6 +665,7 @@ function loadFareInline(btn){
   window._fareMsgHandler=(ev)=>{
     const d=ev.data; if(!d||d.type!=='fareSummary') return;
     if(o) window._fareLast={id:o.id, total:d.total||'', officeName:d.officeName||'', officeAddr:d.officeAddr||'', officeDist:d.officeDist||''}; // メール文面生成・支店住所表示用
+    if(o && window._autoDraftId===o.id && d.total){ window._autoDraftId=null; try{ genConfirmMail(); }catch(e){} }  // 自動下書き: 送料到着→文面を自動生成（確認して送信だけの状態に）
     const ba=document.getElementById('branch-addr'); if(ba&&d.officeAddr) ba.textContent=d.officeAddr; // 届け先欄の支店住所を更新
     const bl=document.getElementById('branch-line'); if(bl&&d.officeName) bl.textContent='西濃運輸 '+String(d.officeName).replace(/営業所$|支店$/,'')+'支店止め';
     const rows=[];
@@ -1273,6 +1274,16 @@ function openOrderDrawer(id){
     b.onclick=()=>{ $("#o-status").querySelectorAll("button").forEach(x=>x.classList.remove("active")); b.classList.add("active"); };
   });
   openDrawer();
+  autoPrepareMail(o);   // 対象注文なら開いた瞬間に送料計算＋配送確認メール文面を自動用意（確認して送信だけの状態に）
+}
+// 楽天・新規・西濃(配送確認要)・メール未送信の注文は、ドロワーを開いた瞬間に運賃計算→文面生成まで自動実行。
+// 送料が届き次第 genConfirmMail が走り、プレビュー＋「📨送信」ボタンが出る＝手動の運賃計算/文面生成クリックが不要に。
+function autoPrepareMail(o){
+  if(!(o && o.mall==="rakuten" && o.status==="new" && needsShipConfirm(o) && !o.mailSent)) return;
+  const btn=document.querySelector('#d-body [data-fare]');
+  if(!btn || btn.dataset.loaded) return;   // 既に計算済みなら二重起動しない
+  window._autoDraftId=o.id;
+  try{ loadFareInline(btn); }catch(e){ window._autoDraftId=null; }
 }
 function saveOrderFromDrawer(){
   const o=getOrder(state.drawer.id);
