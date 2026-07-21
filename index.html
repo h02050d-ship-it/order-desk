@@ -966,12 +966,18 @@ function wrapConfirmMail(o, core){
 function genConfirmMail(){
   const o=getOrder(state.drawer.id); if(!o) return;
   const f=(window._fareLast&&window._fareLast.id===o.id)?window._fareLast:null;
-  if(!f||!f.total){
-    // 運賃計算を「生成」に内包: 未計算なら自動で送料計算を起動し、届き次第この関数を再実行する
+  if(!f){
+    // 運賃計算を「生成」に内包: このorder未計算なら自動で送料計算を起動し、到着でこの関数を再実行する
     const fbtn=document.querySelector('#d-body [data-fare]');
-    if(fbtn && !fbtn.dataset.loaded){ window._genOnFare=o.id; toast("💰 送料を計算しています…（そのまま文面を作ります）"); try{ loadFareInline(fbtn); }catch(e){} return; }
-    // 計算済みだが総額なし（北海道/沖縄/離島＝別途見積り）→ 送料空欄で生成し、手入力を促す
+    if(fbtn){
+      window._genOnFare=o.id;
+      toast("💰 送料を計算しています…（そのまま文面を作ります）");
+      const box=fbtn.parentElement.querySelector('.fare-inline');
+      if(!box || !box.dataset.loaded){ try{ loadFareInline(fbtn); }catch(e){ window._genOnFare=null; } }
+      return;
+    }
   }
+  // f はあり: total があれば記入、無ければ（北海道/沖縄/離島＝別途見積り）空欄で生成し手入力を促す
   const total=(f&&f.total)?f.total:"";
   const itemsTxt=(o.items||[]).map(it=>"・"+cleanItem(it.name)+" ×"+it.qty).join("\n");
   let body="";
