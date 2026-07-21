@@ -940,6 +940,27 @@ async function kakouRegisterNow(){ // ドロワーの手動登録
   toast("🪵 加工予定表: "+(r.written?"登録"+r.written+"行":"登録なし")+(r.skipped?"（既存行あり"+r.skipped+"件スキップ）":""));
   render(); openOrderDrawer(o.id);
 }
+// 配送確認メールの上下定型文（楽天の「サンクスメール」定型文に合わせる）。編集する場合はここを直す。
+const MAIL_HEADER=[
+  "----------------------------------------------------------------------",
+  "このメールはお客様の注文に関する大切なメールです。",
+  "お取引が完了するまで保存してください。",
+  "----------------------------------------------------------------------"
+].join("\n");
+const MAIL_SIGNATURE=[
+  "-------------------------------------------------------",
+  "株式会社林材木店",
+  "無垢ヒノキ専門　林材木店",
+  "4350012 静岡県浜松市東区安間町221-1",
+  "(TEL) 0538582395",
+  "(URL) http://www.rakuten.co.jp/hayazai/",
+  "林 大樹(info@hayazai.com)"
+].join("\n");
+// 本文(1〜5確認等)を、楽天と同じ上下定型文で挟んだ完成メールにする
+function wrapConfirmMail(o, core){
+  const name=o.customer?(o.customer+" 様"):"";
+  return MAIL_HEADER+"\n\n"+(name?name+"\n":"")+core+"\n\n\n"+MAIL_SIGNATURE;
+}
 // 楽天2m案件の配送確認メール文面を生成（個人=支店止めテンプレ/法人=1〜5確認テンプレ）。コピーのみ・送信はしない
 function genConfirmMail(){
   const o=getOrder(state.drawer.id); if(!o) return;
@@ -956,7 +977,7 @@ function genConfirmMail(){
     body="（株）林材木店と申します。\nこの度はご注文ありがとうございます。\n\n配送についてご確認したい点がございます。\n下記の内容をご確認の上、1～5の回答をご返信ください。\n\n\n１.送料："+f.total+"(税込)\n\n２.配送先の屋号、会社名\n"+corp+"\n\n３.配送先（屋号、会社名の記載がある住所）\n"+(corp?("〒"+(o.shipZip||"")+" "+String(o.shipAddr||"")):"")+"\n\n４.(2階以上の場合)1階引渡しになります\n\n５.(配送先が現場の場合)送料+別途料金が発生します。\n現場卸しの場合はご連絡お願い致します。\n\n\n確認ができ次第、下記注文内容で生産発送をさせていただきます。\nお手数ですが、ご返信宜しくお願い致します。\n\n【ご注文内容】\n"+itemsTxt;
   }
   const box=document.getElementById("mail-preview");
-  if(box){ box.value=body; box.style.display="block"; box.style.height="340px"; }
+  if(box){ box.value=wrapConfirmMail(o, body); box.style.display="block"; box.style.height="420px"; }
   const sb=document.getElementById("mail-send"), sn=document.getElementById("mail-send-note");
   if(sb) sb.style.display="block"; if(sn) sn.style.display="block";
   toast("文面を生成しました。内容を確認して「📨 送信」を押してください");
