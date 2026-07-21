@@ -665,7 +665,8 @@ function loadFareInline(btn){
   window._fareMsgHandler=(ev)=>{
     const d=ev.data; if(!d||d.type!=='fareSummary') return;
     if(o) window._fareLast={id:o.id, total:d.total||'', officeName:d.officeName||'', officeAddr:d.officeAddr||'', officeDist:d.officeDist||''}; // メール文面生成・支店住所表示用
-    if(o && window._autoDraftId===o.id && d.total){ window._autoDraftId=null; try{ genConfirmMail(); }catch(e){} }  // 自動下書き: 送料到着→文面を自動生成（確認して送信だけの状態に）
+    if(o && window._autoDraftId===o.id && d.total){ window._autoDraftId=null; try{ genConfirmMail(); }catch(e){} }  // 自動下書き(開いた瞬間): 送料到着→文面を自動生成（本土のみ）
+    if(o && window._genOnFare===o.id){ window._genOnFare=null; try{ genConfirmMail(); }catch(e){} }  // 「生成」ボタンからの運賃計算: 到着したら文面生成（総額なしでも生成し手入力を促す）
     const ba=document.getElementById('branch-addr'); if(ba&&d.officeAddr) ba.textContent=d.officeAddr; // 届け先欄の支店住所を更新
     const bl=document.getElementById('branch-line'); if(bl&&d.officeName) bl.textContent='西濃運輸 '+String(d.officeName).replace(/営業所$|支店$/,'')+'支店止め';
     const rows=[];
@@ -965,22 +966,28 @@ function wrapConfirmMail(o, core){
 function genConfirmMail(){
   const o=getOrder(state.drawer.id); if(!o) return;
   const f=(window._fareLast&&window._fareLast.id===o.id)?window._fareLast:null;
-  if(!f||!f.total){ toast("先に「🧮 運賃ツールで送料計算」を押してください（送料・支店を文面に入れるため）"); return; }
+  if(!f||!f.total){
+    // 運賃計算を「生成」に内包: 未計算なら自動で送料計算を起動し、届き次第この関数を再実行する
+    const fbtn=document.querySelector('#d-body [data-fare]');
+    if(fbtn && !fbtn.dataset.loaded){ window._genOnFare=o.id; toast("💰 送料を計算しています…（そのまま文面を作ります）"); try{ loadFareInline(fbtn); }catch(e){} return; }
+    // 計算済みだが総額なし（北海道/沖縄/離島＝別途見積り）→ 送料空欄で生成し、手入力を促す
+  }
+  const total=(f&&f.total)?f.total:"";
   const itemsTxt=(o.items||[]).map(it=>"・"+cleanItem(it.name)+" ×"+it.qty).join("\n");
   let body="";
   if(o.custType==="個人"){
-    const br=String(f.officeName||o.branch||"").replace(/営業所$|支店$/,"");
-    body="（株）林材木店と申します。\nこの度はご注文ありがとうございます。\n\n配送についてご確認したい点がございます。\n\n配送方法で西濃運輸個人様利用（宅配不可支店止め）をお選びいただいております。\n配送先の支店は西濃運輸　"+br+"支店を予定しております。\n住所："+(f.officeAddr||"")+"\n送料："+f.total+"（税込み）\n\n上記の支店と送料で問題ないかご返信をお願い致します。\n送料と支店に問題がなければ、下記注文内容で生産発送をさせていただきます。\n\nお手数ですが、ご返信宜しくお願い致します。\n\n【ご注文内容】\n"+itemsTxt;
+    const br=String((f&&f.officeName)||o.branch||"").replace(/営業所$|支店$/,"");
+    body="（株）林材木店と申します。\nこの度はご注文ありがとうございます。\n\n配送についてご確認したい点がございます。\n\n配送方法で西濃運輸個人様利用（宅配不可支店止め）をお選びいただいております。\n配送先の支店は西濃運輸　"+br+"支店を予定しております。\n住所："+((f&&f.officeAddr)||"")+"\n送料："+total+"（税込み）\n\n上記の支店と送料で問題ないかご返信をお願い致します。\n送料と支店に問題がなければ、下記注文内容で生産発送をさせていただきます。\n\nお手数ですが、ご返信宜しくお願い致します。\n\n【ご注文内容】\n"+itemsTxt;
   } else {
     // 法人名の抽出（届け先住所に会社名が入っている場合→2番に記載・3番に住所。なければ空白）
     const corp=(String(o.shipAddr||"").match(/(株式会社|有限会社|合同会社|合資会社|（株）|（有）|\(株\)|\(有\))\S*|\S*(工務店|建設|建築|商店|木材店?|製材所?|組合|工業|工房|ｾﾝﾀｰ|センター)/)||[])[0]||"";
-    body="（株）林材木店と申します。\nこの度はご注文ありがとうございます。\n\n配送についてご確認したい点がございます。\n下記の内容をご確認の上、1～5の回答をご返信ください。\n\n\n１.送料："+f.total+"(税込)\n\n２.配送先の屋号、会社名\n"+corp+"\n\n３.配送先（屋号、会社名の記載がある住所）\n"+(corp?("〒"+(o.shipZip||"")+" "+String(o.shipAddr||"")):"")+"\n\n４.(2階以上の場合)1階引渡しになります\n\n５.(配送先が現場の場合)送料+別途料金が発生します。\n現場卸しの場合はご連絡お願い致します。\n\n\n確認ができ次第、下記注文内容で生産発送をさせていただきます。\nお手数ですが、ご返信宜しくお願い致します。\n\n【ご注文内容】\n"+itemsTxt;
+    body="（株）林材木店と申します。\nこの度はご注文ありがとうございます。\n\n配送についてご確認したい点がございます。\n下記の内容をご確認の上、1～5の回答をご返信ください。\n\n\n１.送料："+total+"(税込)\n\n２.配送先の屋号、会社名\n"+corp+"\n\n３.配送先（屋号、会社名の記載がある住所）\n"+(corp?("〒"+(o.shipZip||"")+" "+String(o.shipAddr||"")):"")+"\n\n４.(2階以上の場合)1階引渡しになります\n\n５.(配送先が現場の場合)送料+別途料金が発生します。\n現場卸しの場合はご連絡お願い致します。\n\n\n確認ができ次第、下記注文内容で生産発送をさせていただきます。\nお手数ですが、ご返信宜しくお願い致します。\n\n【ご注文内容】\n"+itemsTxt;
   }
   const box=document.getElementById("mail-preview");
   if(box){ box.value=wrapConfirmMail(o, body); box.style.display="block"; box.style.height="420px"; }
   const sb=document.getElementById("mail-send"), sn=document.getElementById("mail-send-note");
   if(sb) sb.style.display="block"; if(sn) sn.style.display="block";
-  toast("文面を生成しました。内容を確認して「📨 送信」を押してください");
+  toast(total ? "文面を生成しました。内容を確認して「📨 送信」を押してください" : "⚠️ 送料は別途見積り（北海道/沖縄/離島等）。送料欄を手入力してください");
 }
 // プレビュー確認後にお客様（あんしんメルアド）へ送信。成功でメール送信済み✅
 async function sendConfirmMail(){
