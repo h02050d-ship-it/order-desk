@@ -902,7 +902,7 @@ function copyShipInfo(){
 async function seinoIssueFromDrawer(){
   const o=getOrder(state.drawer.id); if(!o) return;
   const addr=(o.shipAddr&&/[都道府県市区町村]/.test(o.shipAddr))?o.shipAddr:(o.opMemo||"");
-  if(!confirm("【西濃で送り状発行＋印刷】🟢本番\n\n届け先: "+(o.customer||"")+"\n〒"+(o.shipZip||"?")+" "+(addr||"住所未取得")+(o.custType==="個人"&&o.branch?"\n止め: "+o.branch+"支店（住所は支店に自動変換）":"")+"\n個口: "+kouguchiTotal(o)+"個口"+(o.deliveryDate?("\n⏰ 着指定: "+o.deliveryDate+(o.custType==="個人"&&shipCarrier(o)==="西濃"?"（支店止めは配達指定不可→送り状に日付は載りません）":"（送り状に配達指定で反映）")):"")+"\n\n西濃へ本番の出荷登録をし、会社PCの HL-L2375DW でA5自動印刷します。よろしいですか？")) return;
+  if(!confirm("【西濃で送り状発行＋印刷】🟢本番\n\n届け先: "+(o.customer||"")+"\n〒"+(o.shipZip||"?")+" "+(addr||"住所未取得")+(o.custType==="個人"&&o.branch?"\n止め: "+o.branch+"支店（住所は支店に自動変換）":"")+"\n個口: "+kouguchiTotal(o)+"個口"+(o.deliveryDate?("\n⏰ 着指定: "+o.deliveryDate+"（送り状に配達指定で反映）"):"")+"\n\n西濃へ本番の出荷登録をし、会社PCの HL-L2375DW でA5自動印刷します。よろしいですか？")) return;
   toast("西濃で発行中…");
   try{
     const u=new URL(API_URL); u.searchParams.set("action","seinoissue"); u.searchParams.set("id",o.id); u.searchParams.set("email",CRED.email); u.searchParams.set("pass",CRED.pass);
@@ -925,11 +925,16 @@ async function seinoIssueFromDrawer(){
     else { toast("発行失敗: "+(res.error||res.raw||"")); }
   }catch(e){ toast("通信エラー"); }
 }
-async function kakouRegisterNow(){ // ドロワーの手動登録
-  const o=getOrder(state.drawer.id); if(!o) return;
+async function kakouRegisterNow(id){ // 手動登録（ドロワー=引数なし / カードの🪵ボタン=id指定）
+  const fromCard=!!id;
+  const o=getOrder(id||state.drawer.id); if(!o) return;
   if(!kakouDb||!kakouAuthed){ toast("加工予定表に接続できていません"); return; }
   const rows=kakouRowsFor(o);
-  if(!rows.length){ toast("登録対象の商品がありません"); return; }
+  if(!rows.length){
+    if(o.mall==="ichiba"){ window.open(KAKOU_URL,"_blank"); toast("寸法を自動抽出できていません → 加工予定表に手入力してください"); }
+    else toast("登録対象の商品がありません");
+    return;
+  }
   if(o.mall==="ichiba"){ // 市場は人間チェック必須：登録内容を提示して確認
     const lines=rows.map(r=>`・${r.customer} ${r.hinmei} ${r.grade} ${r.thickness}×${r.width}×${r.length} 入数${r.qty}×予定${r.planned}`).join("\n");
     if(!confirm("【加工予定表に登録】原本と見比べて正しいですか？\n\n"+lines+"\n\n間違いがあれば登録せず、加工予定表で手入力してください。")) return;
@@ -940,7 +945,7 @@ async function kakouRegisterNow(){ // ドロワーの手動登録
     apiPost({action:"order", id:o.id, status:"preparing"});
   }
   toast("🪵 加工予定表: "+(r.written?"登録"+r.written+"行":"登録なし")+(r.skipped?"（既存行あり"+r.skipped+"件スキップ）":""));
-  render(); openOrderDrawer(o.id);
+  render(); if(!fromCard) openOrderDrawer(o.id);
 }
 // 配送確認メールの上下定型文（楽天の「サンクスメール」定型文に合わせる）。編集する場合はここを直す。
 const MAIL_HEADER=[
@@ -1011,6 +1016,7 @@ async function sendConfirmMail(){
     } else toast("送信失敗: "+(r.error||""));
   }catch(e){ toast("通信エラー"); }
 }
+function toggleTaishogai(){ state.showTaishogai=!state.showTaishogai; render(); }
 function saveDocType(v){ // 市場：注文/見積り/要確認/対象外 の切替（対象外は完了列へ退避）
   const o=getOrder(state.drawer.id); if(!o) return;
   o.docType=v; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.docType=v;
@@ -1024,6 +1030,7 @@ function getInq(id){ return state.inquiries.find(q=>q.id===id); }
 function now(){ const d=new Date(); const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
 
 function matchFilter(o){
+  if(o.docType==="対象外" && !state.showTaishogai) return false;  // 対象外=アーカイブ（市場タブのトグルで表示可）
   const isQuote=(o.docType==="見積り");
   if(state.tab==="mitsumori"){ if(!isQuote) return false; }                       // 見積りタブ＝見積りのみ(市場・EC両方)
   else if(state.tab==="ichiba"){ if(o.mall!=="ichiba"||isQuote) return false; }   // 市場タブ＝市場の注文(見積り除く)
@@ -1095,6 +1102,11 @@ function renderOrders(){
   root.innerHTML="";
   if(!list.length){ root.innerHTML = emptyBig("📭","該当する注文はありません"); return; }
   root.appendChild(board);
+  if(state.tab==="ichiba"){
+    const nArch=state.orders.filter(o=>o.docType==="対象外").length;
+    if(nArch) root.insertAdjacentHTML("beforeend",
+      `<div style="padding:6px 4px 14px"><button class="btn ghost sm" onclick="toggleTaishogai()">🗂 ${state.showTaishogai?"対象外アーカイブを隠す":"対象外アーカイブを表示（"+nArch+"件）"}</button></div>`);
+  }
 }
 function orderCard(o){
   const el=document.createElement("div");
@@ -1121,9 +1133,11 @@ function orderCard(o){
       ${o.hasMsg?'<span class="pill msg">💬 問い合わせ</span>':''}
       ${o.memo?'<span class="pill memo">📝 メモ</span>':''}
     </div>
+    ${(o.mall==="ichiba"&&!o.kakouAdded&&(o.status==="new"||o.status==="preparing")&&o.docType!=="対象外")?`<button class="nextbtn" data-kakou="${o.id}">🪵 加工予定表に追加${kakouRowsFor(o).length?"（"+kakouRowsFor(o).length+"行）":"（手入力）"}</button>`:''}
     ${(next && o.mall!=="rakuten")?`<button class="nextbtn" data-next="${o.id}">${o.mall==="ichiba"?ICHIBA_NEXT_LABEL[o.status]:O_NEXT_LABEL[o.status]}</button>`:''}
   `;
   el.addEventListener("click",e=>{
+    if(e.target.closest("[data-kakou]")){ e.stopPropagation(); kakouRegisterNow(o.id); return; }
     if(e.target.closest("[data-next]")){ e.stopPropagation(); advanceOrder(o.id); return; }
     openOrderDrawer(o.id);
   });
@@ -1710,7 +1724,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
 });
 // expose for inline onclick
-Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,yahooShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline,saveDocType,honjitsuRun,seinoPdfView,genConfirmMail,sendConfirmMail});
+Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,yahooShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline,saveDocType,honjitsuRun,seinoPdfView,genConfirmMail,sendConfirmMail,toggleTaishogai});
 </script>
 </body>
 </html>
