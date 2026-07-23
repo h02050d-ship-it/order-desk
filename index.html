@@ -925,27 +925,119 @@ async function seinoIssueFromDrawer(){
     else { toast("発行失敗: "+(res.error||res.raw||"")); }
   }catch(e){ toast("通信エラー"); }
 }
-async function kakouRegisterNow(id){ // 手動登録（ドロワー=引数なし / カードの🪵ボタン=id指定）
-  const fromCard=!!id;
+function kakouRegisterNow(id){ // 手動登録（ドロワー=引数なし / カードの🪵ボタン=id指定）→ 編集つき確認画面
   const o=getOrder(id||state.drawer.id); if(!o) return;
   if(!kakouDb||!kakouAuthed){ toast("加工予定表に接続できていません"); return; }
-  const rows=kakouRowsFor(o);
-  if(!rows.length){
-    if(o.mall==="ichiba"){ window.open(KAKOU_URL,"_blank"); toast("寸法を自動抽出できていません → 加工予定表に手入力してください"); }
-    else toast("登録対象の商品がありません");
-    return;
-  }
-  if(o.mall==="ichiba"){ // 市場は人間チェック必須：登録内容を提示して確認
-    const lines=rows.map(r=>`・${r.customer} ${r.hinmei} ${r.grade} ${r.thickness}×${r.width}×${r.length} 入数${r.qty}×予定${r.planned}`).join("\n");
-    if(!confirm("【加工予定表に登録】原本と見比べて正しいですか？\n\n"+lines+"\n\n間違いがあれば登録せず、加工予定表で手入力してください。")) return;
-  }
-  const r=await kakouWrite_(o);
-  if(o.mall==="ichiba" && o.status==="new"){ // 市場：登録＝製造中へ（以降は予定表と連動）
+  openKakouEditor(o,{advance:(o.mall==="ichiba"&&o.status==="new")});
+}
+
+/* ---- 加工予定表 追加前の編集つき確認（この内容で追加していいですか？） ---- */
+const KAKOU_GRADES=["-","丸節","小節","特上小","無節","無節特上","生節","B丸節","B無節特上"];
+function _kakouBlankRow_(o){
+  const pre=o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":o.mall==="ichiba"?"":"ネット";
+  const sur=o.mall==="ichiba"?String(o.customer||"").trim():(String(o.customer||"").split(/[ 　]/)[0]||"");
+  const car=shipCarrier(o);
+  return {customer:pre+sur, carrier:(car==="西濃"||car==="佐川")?car:"", hinmei:"F", grade:"-",
+    thickness:"", width:"120", length:"", qty:"", planned:"1", seal:"無", danball:"有", remark:""};
+}
+function openKakouEditor(o,opt){
+  opt=opt||{};
+  const base=kakouRowsFor(o);
+  const rows=base.length?base.map(r=>Object.assign({},r)):[_kakouBlankRow_(o)];
+  state._kakouEd={id:o.id, advance:!!opt.advance, actual:(base[0]&&base[0].actual)||"-", rows:rows};
+  state.drawer={type:"kakou", id:o.id};
+  $("#d-head").innerHTML=`<h3>🪵 この内容で加工予定表に追加していいですか？</h3><button class="d-close" onclick="closeDrawer()">✕</button>`;
+  _kakouEdBody_();
+  $("#d-foot").innerHTML=`<button class="btn ghost" onclick="closeDrawer()">キャンセル</button><button class="btn primary grow" onclick="kakouEdSubmit()">✅ この内容で追加${state._kakouEd.advance?"（→製造中へ）":""}</button>`;
+  openDrawer();
+}
+function _kakouEdBody_(){
+  const ed=state._kakouEd;
+  const selNum=`style="flex:0 0 auto;width:64px;text-align:center"`;
+  const rowsHtml=ed.rows.map((r,i)=>`
+  <div class="prep-box" data-krow="${i}" style="margin-bottom:10px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <select class="sel" data-k="hinmei" style="flex:0 0 auto">${["F","P","S"].map(h=>`<option ${r.hinmei===h?"selected":""}>${h}</option>`).join("")}</select>
+      <select class="sel" data-k="grade" style="flex:0 0 auto">${KAKOU_GRADES.map(g=>`<option ${r.grade===g?"selected":""}>${g}</option>`).join("")}</select>
+      <input class="txt" data-k="thickness" placeholder="厚" value="${esc(r.thickness)}" ${selNum} />×
+      <input class="txt" data-k="width" placeholder="幅" value="${esc(r.width)}" ${selNum} />×
+      <input class="txt" data-k="length" placeholder="長さ" value="${esc(r.length)}" style="flex:0 0 auto;width:76px;text-align:center" />
+      <span style="font-size:12px;color:var(--muted)">入数</span><input class="txt" data-k="qty" value="${esc(r.qty)}" ${selNum} />
+      <span style="font-size:12px;color:var(--muted)">予定(個口)</span><input class="txt" data-k="planned" value="${esc(r.planned)}" ${selNum} />
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px">
+      <span style="font-size:12px;color:var(--muted)">配送</span><select class="sel" data-k="carrier" style="flex:0 0 auto">${["","西濃","佐川"].map(c=>`<option value="${c}" ${(r.carrier||"")===c?"selected":""}>${c||"-"}</option>`).join("")}</select>
+      <span style="font-size:12px;color:var(--muted)">シール</span><select class="sel" data-k="seal" style="flex:0 0 auto">${["無","有"].map(v=>`<option ${r.seal===v?"selected":""}>${v}</option>`).join("")}</select>
+      <span style="font-size:12px;color:var(--muted)">段ボール</span><select class="sel" data-k="danball" style="flex:0 0 auto">${["有","無"].map(v=>`<option ${r.danball===v?"selected":""}>${v}</option>`).join("")}</select>
+      <label style="font-size:12.5px;display:flex;align-items:center;gap:4px"><input type="checkbox" data-k="ryoutan" ${r.ryoutan==="1"?"checked":""}>両端カット</label>
+      <label style="font-size:12.5px;display:flex;align-items:center;gap:4px"><input type="checkbox" data-k="tosou" ${r.tosou==="1"?"checked":""}>塗装</label>
+      <label style="font-size:12.5px;display:flex;align-items:center;gap:4px"><input type="checkbox" data-k="zaiko" ${r.zaiko==="1"?"checked":""}>加在</label>
+      ${ed.rows.length>1?`<button class="btn ghost sm" style="margin-left:auto" onclick="kakouEdDelRow(${i})">🗑 行削除</button>`:""}
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;margin-top:8px">
+      <span style="font-size:12px;color:var(--muted);flex:0 0 auto">備考</span>
+      <input class="txt" data-k="remark" value="${esc(r.remark||"")}" style="flex:1" placeholder="支店止め・着指定など" />
+    </div>
+  </div>`).join("");
+  $("#d-body").innerHTML=`
+    <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">内容を確認し、必要なら編集してから追加してください（原本と見比べを推奨）。</div>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+      <span style="font-size:12px;color:var(--muted);flex:0 0 auto">名前(予定表の表示名)</span>
+      <input class="txt" id="ked-cust" value="${esc(ed.rows[0].customer||"")}" style="flex:1" />
+    </div>
+    ${rowsHtml}
+    <button class="btn ghost" style="width:100%" onclick="kakouEdAddRow()">＋ 行を追加</button>`;
+}
+function _kakouEdCollect_(){
+  const ed=state._kakouEd;
+  const cust=($("#ked-cust")?.value||"").trim();
+  document.querySelectorAll("[data-krow]").forEach(box=>{
+    const i=Number(box.dataset.krow), r=ed.rows[i]; if(!r) return;
+    box.querySelectorAll("[data-k]").forEach(el=>{
+      const k=el.dataset.k;
+      if(el.type==="checkbox") r[k]=el.checked?"1":"";
+      else r[k]=String(el.value).trim();
+    });
+    r.customer=cust;
+  });
+  ed.rows.forEach(r=>r.customer=cust);
+}
+function kakouEdAddRow(){ _kakouEdCollect_(); const ed=state._kakouEd; const o=getOrder(ed.id); const b=_kakouBlankRow_(o); b.customer=ed.rows[0].customer; ed.rows.push(b); _kakouEdBody_(); }
+function kakouEdDelRow(i){ _kakouEdCollect_(); state._kakouEd.rows.splice(i,1); _kakouEdBody_(); }
+async function kakouEdSubmit(){
+  _kakouEdCollect_();
+  const ed=state._kakouEd, o=getOrder(ed.id); if(!o) return;
+  const fin=[];
+  ed.rows.forEach((r,idx)=>{
+    if(!String(r.length||"").trim() && !String(r.qty||"").trim()) return; // 空行はスキップ
+    const row={_uid:("od_"+String(o.id||o.orderNo)+"_"+idx).replace(/[.#$/\[\]:]/g,"_"), order:"8",
+      customer:r.customer, carrier:r.carrier||"", hinmei:r.hinmei, grade:r.grade,
+      thickness:r.thickness, width:r.width, length:r.length,
+      qty:String(r.qty), planned:String(r.planned||"1"), actual:ed.actual,
+      seal:r.seal||"無", danball:r.danball||"有", remark:r.remark||""};
+    if(r.ryoutan==="1") row.ryoutan="1";
+    if(r.tosou==="1") row.tosou="1";
+    if(r.zaiko==="1") row.zaiko="1";
+    fin.push(row);
+  });
+  if(!fin.length){ toast("登録する行がありません（長さ・入数を入力してください）"); return; }
+  const res=await kakouWriteRows_(o,fin);
+  if(ed.advance && o.status==="new"){ // 市場：登録＝製造中へ（以降は予定表と連動）
     o.status="preparing"; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.status="preparing";
     apiPost({action:"order", id:o.id, status:"preparing"});
   }
-  toast("🪵 加工予定表: "+(r.written?"登録"+r.written+"行":"登録なし")+(r.skipped?"（既存行あり"+r.skipped+"件スキップ）":""));
-  render(); if(!fromCard) openOrderDrawer(o.id);
+  toast("🪵 加工予定表: "+(res.written?"登録"+res.written+"行":"登録なし")+(res.skipped?"（既存行あり"+res.skipped+"件スキップ）":"")+(ed.advance?"・製造中へ移動":""));
+  state._kakouEd=null; closeDrawer(); render();
+}
+// 指定行をそのまま書き込む（編集済み行用。dup=スタッフ手入力行と重複はスキップ）
+async function kakouWriteRows_(o,rows){
+  const existing=await kakouExisting_();
+  const wr=rows.filter(r=>!kakouDupOf_(r,existing));
+  for(const r of wr){ await kakouDb.ref("items/"+r._uid).set(r); }
+  o.kakouAdded=true;
+  const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.kakouAdded=true;
+  apiPost({action:"order", id:o.id, kakouAdded:true});
+  return {written:wr.length, skipped:rows.length-wr.length};
 }
 // 配送確認メールの上下定型文（楽天の「サンクスメール」定型文に合わせる）。編集する場合はここを直す。
 const MAIL_HEADER=[
@@ -1147,13 +1239,8 @@ async function advanceOrder(id){
   const o=getOrder(id); const next=O_NEXT[o.status]; if(!next) return;
   // 市場：新規→出荷準備 は内容・返信の確認ポップアップ→OKで加工予定表に登録してから移動
   if(o.mall==="ichiba" && o.status==="new" && next==="preparing"){
-    const rows=kakouRowsFor(o);
-    const lines=rows.length?rows.map(r=>`・${r.hinmei} ${r.grade} ${r.thickness}×${r.width}×${r.length} 入数${r.qty}×予定${r.planned}`).join("\n"):"（寸法の自動抽出なし → 加工予定表へは手入力してください）";
-    if(!confirm("【出荷準備へ移動】"+(o.customer||"")+"\n\n✔ 注文内容を原本と見比べて確認しましたか？\n✔ お客様への返信（受注のご連絡）は済みましたか？\n\n─ 加工予定表に登録する内容 ─\n"+lines+"\n\nOKを押すと加工予定表に登録して移動します。")) return;
-    if(rows.length && !o.kakouAdded && kakouDb && kakouAuthed){
-      try{ const r=await kakouWrite_(o); toast("🪵 加工予定表: 登録"+(r.written||0)+"行"+(r.skipped?"（既存"+r.skipped+"スキップ）":"")); }
-      catch(e){ toast("⚠️ 加工予定表への登録に失敗（手動で登録してください）"); }
-    }
+    if(!o.kakouAdded && kakouDb && kakouAuthed){ openKakouEditor(o,{advance:true}); return; } // 未登録→編集つき確認画面（登録と同時に製造中へ）
+    if(!confirm("【製造中へ移動】"+(o.customer||"")+"\n\n✔ 注文内容を原本と見比べて確認しましたか？\n✔ お客様への返信（受注のご連絡）は済みましたか？")) return;
   }
   o.status=next; saveOrderOverlay(o);
   toast("「"+stLabel(o,next)+"」へ移動しました");
@@ -1724,7 +1811,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
 });
 // expose for inline onclick
-Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,yahooShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline,saveDocType,honjitsuRun,seinoPdfView,genConfirmMail,sendConfirmMail,toggleTaishogai});
+Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,yahooShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline,saveDocType,honjitsuRun,seinoPdfView,genConfirmMail,sendConfirmMail,toggleTaishogai,kakouEdAddRow,kakouEdDelRow,kakouEdSubmit});
 </script>
 </body>
 </html>
