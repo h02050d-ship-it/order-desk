@@ -89,6 +89,7 @@
   .pill.doc-quote{background:#e8f1fd; color:#1a5dab; border-color:#bcd6f5; font-weight:800}
   .pill.doc-check{background:#fff4e5; color:#a06a14; border-color:#f3d9a8; font-weight:800}
   .doc-text{white-space:pre-wrap; font-size:11.5px; line-height:1.6; max-height:260px; overflow:auto; background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:10px; margin-top:6px}
+  .i-sum{font-size:11.5px; color:var(--muted); line-height:1.45; margin:2px 0 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .card .ono{font-size:11px; color:var(--muted); font-weight:600; margin-left:auto}
   .card .ono-link{font-size:11px; color:var(--brand); font-weight:700; margin-left:auto; text-decoration:none; white-space:nowrap; padding:2px 4px; border-radius:6px}
   .card .ono-link:hover{text-decoration:underline; background:var(--panel2)}
@@ -1010,11 +1011,13 @@ async function sendConfirmMail(){
     } else toast("送信失敗: "+(r.error||""));
   }catch(e){ toast("通信エラー"); }
 }
-function saveDocType(v){ // 市場：注文/見積り/要確認 の切替
+function saveDocType(v){ // 市場：注文/見積り/要確認/対象外 の切替（対象外は完了列へ退避）
   const o=getOrder(state.drawer.id); if(!o) return;
   o.docType=v; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.docType=v;
-  apiPost({action:"order", id:o.id, docType:v});
-  toast("種別を「"+v+"」にしました"); render();
+  const body={action:"order", id:o.id, docType:v};
+  if(v==="対象外"&&o.status!=="done"){ o.status="done"; if(sv) sv.status="done"; body.status="done"; }
+  apiPost(body);
+  toast("種別を「"+v+"」にしました"+(v==="対象外"?"（完了列へ移動）":"")); render();
 }
 function getOrder(id){ return state.orders.find(o=>o.id===id); }
 function getInq(id){ return state.inquiries.find(q=>q.id===id); }
@@ -1106,13 +1109,14 @@ function orderCard(o){
       <span class="date" style="margin-left:auto">${esc(o.date.slice(5))}</span>
     </div>
     <div class="items">${itemsSummaryHTML(o.items)}</div>
+    ${(o.mall==="ichiba"&&o.summary)?'<div class="i-sum">🤖 '+esc(String(o.summary).slice(0,70))+'</div>':''}
     <div class="flagrow">
       ${o.custType?'<span class="pill cust-'+(o.custType==="法人"?"corp":"indiv")+'">'+(o.custType==="法人"?"🏢 法人":("🏠 個人"+(shipCarrier(o)==="西濃"?(o.branch?"・<b>"+esc(o.branch)+"支店止め</b>":"<b>（支店止め）</b>"):"（宅配）")))+'</span>':''}
       ${o.mall!=="ichiba"?'<span class="pill">🚚 '+esc(shipCarrier(o))+'</span>':''}
       ${o.status==="shipped"?'<span class="pill ship-wait">📦 引渡し未完了</span>':''}
       ${o.remarks?'<span class="pill memo memo-on" title="備考: '+esc(o.remarks)+'">📝 備考あり</span>':''}
       ${o.deliveryDate?'<span class="pill date-spec">⏰ '+esc(o.deliveryDate)+' 着指定</span>':''}
-      ${o.mall==="ichiba"?(('<span class="pill '+(o.docType==="注文"?"doc-order":o.docType==="見積り"?"doc-quote":"doc-check")+'">'+(o.docType==="注文"?"📝 注文":o.docType==="見積り"?"💰 見積り":"❓ 要確認")+'</span>')+('<span class="pill">'+(o.src==="mail"?"📧 メール":"📠 FAX")+'</span>')):""}
+      ${o.mall==="ichiba"?(('<span class="pill '+(o.docType==="注文"?"doc-order":o.docType==="見積り"?"doc-quote":"doc-check")+'">'+(o.docType==="注文"?"📝 注文":o.docType==="見積り"?"💰 見積り":o.docType==="対象外"?"🚫 対象外":"❓ 要確認")+'</span>')+('<span class="pill">'+(o.src==="mail"?"📧 メール":"📠 FAX")+'</span>')):""}
       ${(o.mall!=="ichiba"&&o.status==="new")?workflowPillHTML(o):""}
       ${o.hasMsg?'<span class="pill msg">💬 問い合わせ</span>':''}
       ${o.memo?'<span class="pill memo">📝 メモ</span>':''}
@@ -1227,10 +1231,12 @@ function openOrderDrawer(id){
     <div class="prep-box">
       <div class="prep-line"><span>種別</span><span>
         <select class="sel" id="o-doctype" onchange="saveDocType(this.value)">
-          ${["注文","見積り","要確認"].map(t=>`<option value="${t}" ${o.docType===t?"selected":""}>${t}</option>`).join("")}
+          ${["注文","見積り","要確認","対象外"].map(t=>`<option value="${t}" ${o.docType===t?"selected":""}>${t}</option>`).join("")}
         </select></span></div>
+      ${o.summary?`<div style="font-size:12.5px;line-height:1.5;margin-top:6px"><b>🤖 要約:</b> ${esc(o.summary)}</div>`:""}
+      ${(o.src==="mail"&&o.docText)?`<div style="font-size:12px;font-weight:700;margin-top:8px">📧 メール本文</div><div class="doc-text">${esc(String(o.docText).split(/===添付/)[0].trim())}</div>`:""}
       ${o.fileUrl?`<a class="btn ghost" style="display:block;text-align:center;margin-top:8px;text-decoration:none" href="${esc(o.fileUrl)}" target="_blank">📄 原本を開く（${o.src==="mail"?"Gmail":"Drive"}↗）</a>`:""}
-      ${o.docText?`<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12.5px;font-weight:700">🔍 読み取りテキストを表示</summary><div class="doc-text">${esc(o.docText)}</div></details>`:`<div style="font-size:12px;color:var(--muted);margin-top:6px">読み取りテキストなし（原本を確認してください）</div>`}
+      ${o.docText?`<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12.5px;font-weight:700">🔍 ${o.src==="mail"?"添付の読み取りテキスト":"読み取りテキスト"}を表示</summary><div class="doc-text">${esc(o.src==="mail"?(String(o.docText).split(/===添付/).slice(1).join("===添付")||"（添付なし）"):o.docText)}</div></details>`:`<div style="font-size:12px;color:var(--muted);margin-top:6px">読み取りテキストなし（原本を確認してください）</div>`}
     </div>
     <div class="sec-t">🪵 加工予定表（内容の人間チェック必須）</div>
     <div class="prep-box">
