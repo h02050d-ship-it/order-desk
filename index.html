@@ -901,7 +901,7 @@ function copyShipInfo(){
 async function seinoIssueFromDrawer(){
   const o=getOrder(state.drawer.id); if(!o) return;
   const addr=(o.shipAddr&&/[都道府県市区町村]/.test(o.shipAddr))?o.shipAddr:(o.opMemo||"");
-  if(!confirm("【西濃で送り状発行＋印刷】🟢本番\n\n届け先: "+(o.customer||"")+"\n〒"+(o.shipZip||"?")+" "+(addr||"住所未取得")+(o.custType==="個人"&&o.branch?"\n止め: "+o.branch+"支店（住所は支店に自動変換）":"")+"\n個口: "+kouguchiTotal(o)+"個口\n\n西濃へ本番の出荷登録をし、会社PCの HL-L2375DW でA5自動印刷します。よろしいですか？")) return;
+  if(!confirm("【西濃で送り状発行＋印刷】🟢本番\n\n届け先: "+(o.customer||"")+"\n〒"+(o.shipZip||"?")+" "+(addr||"住所未取得")+(o.custType==="個人"&&o.branch?"\n止め: "+o.branch+"支店（住所は支店に自動変換）":"")+"\n個口: "+kouguchiTotal(o)+"個口"+(o.deliveryDate?("\n⏰ 着指定: "+o.deliveryDate+(o.custType==="個人"&&shipCarrier(o)==="西濃"?"（支店止めは配達指定不可→送り状に日付は載りません）":"（送り状に配達指定で反映）")):"")+"\n\n西濃へ本番の出荷登録をし、会社PCの HL-L2375DW でA5自動印刷します。よろしいですか？")) return;
   toast("西濃で発行中…");
   try{
     const u=new URL(API_URL); u.searchParams.set("action","seinoissue"); u.searchParams.set("id",o.id); u.searchParams.set("email",CRED.email); u.searchParams.set("pass",CRED.pass);
