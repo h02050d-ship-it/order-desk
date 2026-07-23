@@ -90,6 +90,13 @@
   .pill.doc-check{background:#fff4e5; color:#a06a14; border-color:#f3d9a8; font-weight:800}
   .doc-text{white-space:pre-wrap; font-size:11.5px; line-height:1.6; max-height:260px; overflow:auto; background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:10px; margin-top:6px}
   .i-sum{font-size:11.5px; color:var(--muted); line-height:1.45; margin:2px 0 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  /* 加工予定表エディタ（予定表と同じ横一列の表形式） */
+  .ked-wrap{overflow-x:auto; margin:4px -4px 8px; padding:0 4px}
+  .ked-t{border-collapse:collapse; white-space:nowrap; font-size:12.5px}
+  .ked-t th{font-size:10.5px; color:var(--muted); font-weight:700; padding:2px 4px; text-align:center; border-bottom:1.5px solid var(--line)}
+  .ked-t td{padding:3px 3px; border-bottom:1px solid var(--line); text-align:center; vertical-align:middle}
+  .ked-t .txt,.ked-t .sel{padding:5px 6px; font-size:12.5px; text-align:center}
+  .ked-t input[type=checkbox]{width:16px;height:16px}
   .card .ono{font-size:11px; color:var(--muted); font-weight:600; margin-left:auto}
   .card .ono-link{font-size:11px; color:var(--brand); font-weight:700; margin-left:auto; text-decoration:none; white-space:nowrap; padding:2px 4px; border-radius:6px}
   .card .ono-link:hover{text-decoration:underline; background:var(--panel2)}
@@ -930,12 +937,29 @@ function _kakouBlankRow_(o){
   return {customer:pre+sur, carrier:(car==="西濃"||car==="佐川")?car:"", hinmei:"F", grade:"-",
     thickness:"", width:"120", length:"", qty:"", planned:"1", seal:"無", danball:"有", remark:""};
 }
+// 入数【n枚】が取れない注文(束数のみ等)でも、AI読取の品名から等級・寸法・予定(束数)を事前入力する
+function _kakouPrefillRows_(o){
+  const out=[];
+  (o.items||[]).forEach(it=>{
+    const p=parseItem(it.name); if(!p.dim) return;
+    const d=p.dim.split("×"); if(d.length<3) return;
+    const hin=/フローリング/.test(p.type)?"F":/羽目板/.test(p.type)?"P":/スノコ/.test(p.type)?"S":"F";
+    const b=_kakouBlankRow_(o);
+    b.hinmei=hin; b.grade=kakouGradeOf(p.fushi,p.grade)||"-";
+    b.thickness=d[0]; b.width=(hin==="F"||hin==="P")?"120":d[1]; b.length=d[2];
+    b.planned=String(Number(it.qty)||1);   // 束数＝予定(個口)として仮置き
+    b.qty="";                              // 入数は原本を見て入力
+    out.push(b);
+  });
+  return out.length?out:[_kakouBlankRow_(o)];
+}
 function openKakouEditor(o,opt){
   opt=opt||{};
   const base=kakouRowsFor(o);
-  const rows=base.length?base.map(r=>Object.assign({},r)):[_kakouBlankRow_(o)];
+  const rows=base.length?base.map(r=>Object.assign({},r)):_kakouPrefillRows_(o);
   state._kakouEd={id:o.id, advance:!!opt.advance, actual:(base[0]&&base[0].actual)||"-", rows:rows};
   state.drawer={type:"kakou", id:o.id};
+  $("#drawer").style.width="min(96vw, 1080px)"; // 予定表と同じ横一列表示のため広げる（閉じると元に戻る）
   $("#d-head").innerHTML=`<h3>🪵 この内容で加工予定表に追加していいですか？</h3><button class="d-close" onclick="closeDrawer()">✕</button>`;
   _kakouEdBody_();
   $("#d-foot").innerHTML=`<button class="btn ghost" onclick="closeDrawer()">キャンセル</button><button class="btn primary grow" onclick="kakouEdSubmit()">✅ この内容で追加${state._kakouEd.advance?"（→製造中へ）":""}</button>`;
@@ -943,40 +967,36 @@ function openKakouEditor(o,opt){
 }
 function _kakouEdBody_(){
   const ed=state._kakouEd;
-  const selNum=`style="flex:0 0 auto;width:64px;text-align:center"`;
-  const rowsHtml=ed.rows.map((r,i)=>`
-  <div class="prep-box" data-krow="${i}" style="margin-bottom:10px">
-    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-      <select class="sel" data-k="hinmei" style="flex:0 0 auto">${["F","P","S"].map(h=>`<option ${r.hinmei===h?"selected":""}>${h}</option>`).join("")}</select>
-      <select class="sel" data-k="grade" style="flex:0 0 auto">${KAKOU_GRADES.map(g=>`<option ${r.grade===g?"selected":""}>${g}</option>`).join("")}</select>
-      <input class="txt" data-k="thickness" placeholder="厚" value="${esc(r.thickness)}" ${selNum} />×
-      <input class="txt" data-k="width" placeholder="幅" value="${esc(r.width)}" ${selNum} />×
-      <input class="txt" data-k="length" placeholder="長さ" value="${esc(r.length)}" style="flex:0 0 auto;width:76px;text-align:center" />
-      <span style="font-size:12px;color:var(--muted)">入数</span><input class="txt" data-k="qty" value="${esc(r.qty)}" ${selNum} />
-      <span style="font-size:12px;color:var(--muted)">予定(個口)</span><input class="txt" data-k="planned" value="${esc(r.planned)}" ${selNum} />
-    </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px">
-      <span style="font-size:12px;color:var(--muted)">配送</span><select class="sel" data-k="carrier" style="flex:0 0 auto">${["","西濃","佐川"].map(c=>`<option value="${c}" ${(r.carrier||"")===c?"selected":""}>${c||"-"}</option>`).join("")}</select>
-      <span style="font-size:12px;color:var(--muted)">シール</span><select class="sel" data-k="seal" style="flex:0 0 auto">${["無","有"].map(v=>`<option ${r.seal===v?"selected":""}>${v}</option>`).join("")}</select>
-      <span style="font-size:12px;color:var(--muted)">段ボール</span><select class="sel" data-k="danball" style="flex:0 0 auto">${["有","無"].map(v=>`<option ${r.danball===v?"selected":""}>${v}</option>`).join("")}</select>
-      <label style="font-size:12.5px;display:flex;align-items:center;gap:4px"><input type="checkbox" data-k="ryoutan" ${r.ryoutan==="1"?"checked":""}>両端カット</label>
-      <label style="font-size:12.5px;display:flex;align-items:center;gap:4px"><input type="checkbox" data-k="tosou" ${r.tosou==="1"?"checked":""}>塗装</label>
-      <label style="font-size:12.5px;display:flex;align-items:center;gap:4px"><input type="checkbox" data-k="zaiko" ${r.zaiko==="1"?"checked":""}>加在</label>
-      ${ed.rows.length>1?`<button class="btn ghost sm" style="margin-left:auto" onclick="kakouEdDelRow(${i})">🗑 行削除</button>`:""}
-    </div>
-    <div style="display:flex;gap:6px;align-items:center;margin-top:8px">
-      <span style="font-size:12px;color:var(--muted);flex:0 0 auto">備考</span>
-      <input class="txt" data-k="remark" value="${esc(r.remark||"")}" style="flex:1" placeholder="支店止め・着指定など" />
-    </div>
-  </div>`).join("");
+  const trs=ed.rows.map((r,i)=>`
+    <tr data-krow="${i}">
+      <td><select class="sel" data-k="carrier">${["","西濃","佐川"].map(c=>`<option value="${c}" ${(r.carrier||"")===c?"selected":""}>${c||"-"}</option>`).join("")}</select></td>
+      <td><select class="sel" data-k="hinmei">${["F","P","S"].map(h=>`<option ${r.hinmei===h?"selected":""}>${h}</option>`).join("")}</select></td>
+      <td><select class="sel" data-k="grade">${KAKOU_GRADES.map(g=>`<option ${r.grade===g?"selected":""}>${g}</option>`).join("")}</select></td>
+      <td><input class="txt" data-k="thickness" value="${esc(r.thickness)}" style="width:44px" /></td>
+      <td><input class="txt" data-k="width" value="${esc(r.width)}" style="width:44px" /></td>
+      <td><input class="txt" data-k="length" value="${esc(r.length)}" style="width:56px" /></td>
+      <td><input class="txt" data-k="qty" value="${esc(r.qty)}" style="width:44px" placeholder="枚" /></td>
+      <td><input class="txt" data-k="planned" value="${esc(r.planned)}" style="width:44px" /></td>
+      <td><select class="sel" data-k="seal">${["無","有"].map(v=>`<option ${r.seal===v?"selected":""}>${v}</option>`).join("")}</select></td>
+      <td><select class="sel" data-k="danball">${["有","無"].map(v=>`<option ${r.danball===v?"selected":""}>${v}</option>`).join("")}</select></td>
+      <td><input type="checkbox" data-k="ryoutan" ${r.ryoutan==="1"?"checked":""}></td>
+      <td><input type="checkbox" data-k="tosou" ${r.tosou==="1"?"checked":""}></td>
+      <td><input type="checkbox" data-k="zaiko" ${r.zaiko==="1"?"checked":""}></td>
+      <td><input class="txt" data-k="remark" value="${esc(r.remark||"")}" style="width:150px;text-align:left" placeholder="支店止め・着指定など" /></td>
+      <td>${ed.rows.length>1?`<button class="btn ghost sm" onclick="kakouEdDelRow(${i})">🗑</button>`:""}</td>
+    </tr>`).join("");
   $("#d-body").innerHTML=`
     <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">内容を確認し、必要なら編集してから追加してください（原本と見比べを推奨）。</div>
-    <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
       <span style="font-size:12px;color:var(--muted);flex:0 0 auto">名前(予定表の表示名)</span>
       <input class="txt" id="ked-cust" value="${esc(ed.rows[0].customer||"")}" style="flex:1" />
     </div>
-    ${rowsHtml}
-    <button class="btn ghost" style="width:100%" onclick="kakouEdAddRow()">＋ 行を追加</button>`;
+    <div class="ked-wrap"><table class="ked-t">
+      <thead><tr><th>配送</th><th>品名</th><th>等級</th><th>厚さ</th><th>幅</th><th>長さ</th><th>入数</th><th>予定</th><th>シール</th><th>段ボ</th><th>両端</th><th>塗装</th><th>加在</th><th>備考</th><th></th></tr></thead>
+      <tbody>${trs}</tbody>
+    </table></div>
+    <button class="btn ghost" style="width:100%" onclick="kakouEdAddRow()">＋ 行を追加</button>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px">※加工予定表と同じ並び（配送/品名/等級/厚さ/幅/長さ/入数/予定/シール/段ボ/両端/塗装/加在/備考）。横にスクロールできます。</div>`;
 }
 function _kakouEdCollect_(){
   const ed=state._kakouEd;
@@ -1708,7 +1728,7 @@ function resetTemplates(){ state.templates=JSON.parse(JSON.stringify(DEFAULT_TEM
    Drawer open/close
 ========================================================= */
 function openDrawer(){ $("#scrim").classList.add("on"); $("#drawer").classList.add("on"); }
-function closeDrawer(){ $("#scrim").classList.remove("on"); $("#drawer").classList.remove("on"); state.drawer=null; }
+function closeDrawer(){ $("#scrim").classList.remove("on"); $("#drawer").classList.remove("on"); $("#drawer").style.width=""; state.drawer=null; }
 
 /* =========================================================
    Render dispatcher
