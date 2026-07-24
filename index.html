@@ -587,7 +587,7 @@ function parseItem(name){
   const type=(s.match(/フローリング|羽目板|野地板|スノコ板?|破風板?|笠木|框|無垢板/)||[])[0]||"";
   const dim=(s.match(/\d{1,3}\s*[×x]\s*\d{1,3}\s*[×x]\s*\d{3,4}/)||[""])[0].replace(/\s/g,"").replace(/x/gi,"×");
   let qty=""; const qm=s.match(/【\s*(\d+)\s*枚/)||s.match(/(\d+)\s*枚入/); if(qm) qty=qm[1]+"枚入";
-  const fushi=(s.match(/特上無節|無節特上|特上小節|特上小|上小節|小節|丸節|生節|無節|特上|節有|節あり|節無|節|小/)||[])[0]||"";
+  const fushi=(s.match(/特上無節|無節特上|特選上小|選上小|特上小節|特上小|上小節|小節|丸節|生節|無節|特上|節有|節あり|節無|節|小/)||[])[0]||"";
   return {grade,wood,type,dim,qty,fushi,raw:s};
 }
 function cleanItem(name){ // プレーンテキスト（tooltip等）
@@ -750,7 +750,7 @@ function initKakou(){
 // EC商品名の節表記 → 加工予定表の等級選択肢（-,丸節,小節,特上小,無節,無節特上,生節,B丸節,B無節特上）
 function kakouGradeOf(fushi,bc){
   const g = /無節特上|特上無節/.test(fushi)?"無節特上"
-        : /特上小|上小節|特上/.test(fushi)?"特上小"
+        : /特上小|選上小|上小節|特上/.test(fushi)?"特上小"
         : /生節/.test(fushi)?"生節"
         : /小節|^小$/.test(fushi)?"小節"
         : /無節|節無/.test(fushi)?"無節"
