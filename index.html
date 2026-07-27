@@ -786,15 +786,16 @@ function kakouRowsFor(o){
     if(p.grade==="B" && !/^B/.test(grade)) rem.push("B級品");
     const pre=o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":o.mall==="ichiba"?"":"ネット";  // 名前プレフィックス(様なし)
     const sur=o.mall==="ichiba"?String(o.customer||"").trim():(String(o.customer||"").split(/[ 　]/)[0]||"");  // 市場は社名そのまま
-    const carVal=carrier==="西濃"?"西濃":carrier==="佐川"?"佐川":"";  // 配送列
+    const carVal=carrier==="西濃"?"西濃":"";  // 配送列（加工予定表は西濃/内藤中心。佐川宅配は空）
+    const danballVal=(carVal==="西濃"||/無節|特上小/.test(grade))?"有":"無";  // 西濃必須 or 特上小/無節のみ段ボール（丸節等は無）
     const uid=("od_"+String(o.id||o.orderNo)+"_"+idx).replace(/[.#$/\[\]:]/g,"_");
-    const row={_uid:uid, order:"8",
+    const row={_uid:uid, order:"4",
       customer:pre+sur, carrier:carVal,
       hinmei:hin, grade:grade,
       thickness:d[0], width:((hin==="F"||hin==="P")?"120":d[1]), length:d[2], // 加工幅は原板120(羽目板103/ﾌﾛｰﾘﾝｸﾞ108→120表記)
 
       qty:String(qty), planned:String(planned), actual:actualVal,
-      seal:"無", danball:"有", remark:rem.filter(Boolean).join(" ")};
+      seal:"無", danball:danballVal, remark:rem.filter(Boolean).join(" ")};
     if(/両端直角カット/.test(opt)) row.ryoutan="1";
     if(/塗装/.test(opt)) row.tosou="1";
     if(/^B/.test(grade)) row.zaiko="1"; // B級=加工在庫（加工予定表側の自動チェックと同じ）
@@ -931,12 +932,34 @@ function kakouRegisterNow(id){ // 手動登録（ドロワー=引数なし / カ
 
 /* ---- 加工予定表 追加前の編集つき確認（この内容で追加していいですか？） ---- */
 const KAKOU_GRADES=["-","丸節","小節","特上小","無節","無節特上","生節","B丸節","B無節特上"];
+function _kakouLen2Nyusu_(len){ len=Number(len)||0; if(len>=3600)return "8"; if(len>=2700)return "10"; if(len>=1800)return "8"; return ""; } // 市場束物の入数目安: 2m=8/3m=10/4m=8
+// 取引先ごとのシール・段ボールマスタ(加工予定表 sealList)から該当先を探す（表記ゆれは空白除去で緩くマッチ）
+function _sealMaster_(customer){
+  const list=window._sealList||[]; const c=String(customer||"").replace(/[\s　]/g,"").replace(/様$/,"");
+  if(!c) return null;
+  for(const r of list){ const n=String(r.name||"").replace(/[\s　]/g,""); if(n&&(c.indexOf(n)>=0||n.indexOf(c)>=0)) return r; }
+  return null;
+}
+// シール・段ボールの既定を「配送 → 取引先マスタ → 等級」の優先で決める
+function _kakouAutoSD_(row){
+  const m=_sealMaster_(row.customer);
+  let seal,danball;
+  if(row.carrier==="西濃"){ seal="無"; danball="有"; }                       // 西濃=シールなし・段ボール必須
+  else{
+    seal = row.carrier==="内藤" ? "有" : (m? (m.seal?"有":"無") : "無");        // 内藤=シール有／他は取引先マスタ
+    danball = (m&&m.danball) ? "有" : (/無節|特上小/.test(row.grade)?"有":"無"); // 段ボールは取引先マスタ有 or 特上小/無節のみ（丸節等は無）
+  }
+  return {seal,danball};
+}
 function _kakouBlankRow_(o){
   const pre=o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":o.mall==="ichiba"?"":"ネット";
   const sur=o.mall==="ichiba"?String(o.customer||"").trim():(String(o.customer||"").split(/[ 　]/)[0]||"");
   const car=shipCarrier(o);
-  return {customer:pre+sur, carrier:(car==="西濃"||car==="佐川")?car:"", hinmei:"F", grade:"-",
-    thickness:"", width:"120", length:"", qty:"", planned:"1", seal:"無", danball:"有", remark:""};
+  const carrier=o.mall==="ichiba" ? "" : (car==="西濃"?"西濃":""); // 市場は既定なし・ECは西濃のみ（佐川は加工予定表の配送欄では扱わない）
+  const row={customer:pre+sur, carrier:carrier, hinmei:"F", grade:"-",
+    thickness:"", width:"120", length:"", qty:"", planned:"1", seal:"無", danball:"無", remark:""};
+  const sd=_kakouAutoSD_(row); row.seal=sd.seal; row.danball=sd.danball;
+  return row;
 }
 // 入数【n枚】が取れない注文(束数のみ等)でも、AI読取の品名から等級・寸法・予定(束数)を事前入力する
 function _kakouPrefillRows_(o){
@@ -948,14 +971,18 @@ function _kakouPrefillRows_(o){
     const b=_kakouBlankRow_(o);
     b.hinmei=hin; b.grade=kakouGradeOf(p.fushi,p.grade)||"-";
     b.thickness=d[0]; b.width=(hin==="F"||hin==="P")?"120":d[1]; b.length=d[2];
-    b.planned=String(Number(it.qty)||1);   // 束数＝予定(個口)として仮置き
-    b.qty="";                              // 入数は原本を見て入力
+    const bund=Number(it.qty)||1;
+    b.planned=String(bund);                 // 束数＝予定(個口)に仮置き
+    b.qty=_kakouLen2Nyusu_(d[2]);           // 入数の目安（2m8/3m10/4m8）
+    if(o.mall==="ichiba" && bund>=20) b.carrier="内藤";  // 数量20以上は内藤を既定
+    const sd=_kakouAutoSD_(b); b.seal=sd.seal; b.danball=sd.danball;
     out.push(b);
   });
   return out.length?out:[_kakouBlankRow_(o)];
 }
-function openKakouEditor(o,opt){
+async function openKakouEditor(o,opt){
   opt=opt||{};
+  if(!window._sealList && kakouDb){ try{ const s=await kakouDb.ref("sealList").once("value"); window._sealList=s.val()||[]; }catch(e){ window._sealList=[]; } }
   const base=kakouRowsFor(o);
   const rows=base.length?base.map(r=>Object.assign({},r)):_kakouPrefillRows_(o);
   state._kakouEd={id:o.id, advance:!!opt.advance, actual:(base[0]&&base[0].actual)||"-", rows:rows};
@@ -970,9 +997,9 @@ function _kakouEdBody_(){
   const ed=state._kakouEd;
   const trs=ed.rows.map((r,i)=>`
     <tr data-krow="${i}">
-      <td><select class="sel" data-k="carrier">${["","西濃","佐川"].map(c=>`<option value="${c}" ${(r.carrier||"")===c?"selected":""}>${c||"-"}</option>`).join("")}</select></td>
+      <td><select class="sel" data-k="carrier" onchange="kakouEdRecalc(${i})">${["","西濃","内藤","自社","引取"].map(c=>`<option value="${c}" ${(r.carrier||"")===c?"selected":""}>${c||"-"}</option>`).join("")}</select></td>
       <td><select class="sel" data-k="hinmei">${["F","P","S"].map(h=>`<option ${r.hinmei===h?"selected":""}>${h}</option>`).join("")}</select></td>
-      <td><select class="sel" data-k="grade">${KAKOU_GRADES.map(g=>`<option ${r.grade===g?"selected":""}>${g}</option>`).join("")}</select></td>
+      <td><select class="sel" data-k="grade" onchange="kakouEdRecalc(${i})">${KAKOU_GRADES.map(g=>`<option ${r.grade===g?"selected":""}>${g}</option>`).join("")}</select></td>
       <td><input class="txt" data-k="thickness" value="${esc(r.thickness)}" style="width:44px" /></td>
       <td><input class="txt" data-k="width" value="${esc(r.width)}" style="width:44px" /></td>
       <td><input class="txt" data-k="length" value="${esc(r.length)}" style="width:56px" /></td>
@@ -1016,17 +1043,21 @@ function _kakouEdCollect_(){
 function kakouEdAddRow(){ _kakouEdCollect_(); const ed=state._kakouEd; const o=getOrder(ed.id); const b=_kakouBlankRow_(o); b.customer=ed.rows[0].customer; ed.rows.push(b); _kakouEdBody_(); }
 function kakouEdDelRow(i){ _kakouEdCollect_(); state._kakouEd.rows.splice(i,1); _kakouEdBody_(); }
 function kakouEdCopyRow(i){ _kakouEdCollect_(); const ed=state._kakouEd; ed.rows.splice(i+1,0,Object.assign({},ed.rows[i])); _kakouEdBody_(); } // 同一内容を直下に複製（1山上限で分ける等・数量だけ直せばOK）
+function kakouEdRecalc(i){ _kakouEdCollect_(); const r=state._kakouEd.rows[i]; const sd=_kakouAutoSD_(r); r.seal=sd.seal; r.danball=sd.danball; _kakouEdBody_(); } // 配送/等級を変えたらシール・段ボールを自動再計算
 async function kakouEdSubmit(){
   _kakouEdCollect_();
   const ed=state._kakouEd, o=getOrder(ed.id); if(!o) return;
+  // 配送(内藤/西濃/自社/引取)が未選択の実データ行があればポップアップ（市場は特に必須）
+  const noCar=ed.rows.filter(r=>(String(r.length||"").trim()||String(r.qty||"").trim()) && !String(r.carrier||"").trim());
+  if(noCar.length && !confirm("配送が選択されていない行が"+noCar.length+"件あります。\n（内藤／西濃／自社／引取）\n\nこのまま配送を空欄で追加しますか？")) return;
   const fin=[];
   ed.rows.forEach((r,idx)=>{
     if(!String(r.length||"").trim() && !String(r.qty||"").trim()) return; // 空行はスキップ
-    const row={_uid:("od_"+String(o.id||o.orderNo)+"_"+idx).replace(/[.#$/\[\]:]/g,"_"), order:"8",
+    const row={_uid:("od_"+String(o.id||o.orderNo)+"_"+idx).replace(/[.#$/\[\]:]/g,"_"), order:"4",
       customer:r.customer, carrier:r.carrier||"", hinmei:r.hinmei, grade:r.grade,
       thickness:r.thickness, width:r.width, length:r.length,
       qty:String(r.qty), planned:String(r.planned||"1"), actual:ed.actual,
-      seal:r.seal||"無", danball:r.danball||"有", remark:r.remark||""};
+      seal:r.seal||"無", danball:r.danball||"無", remark:r.remark||""};
     if(r.ryoutan==="1") row.ryoutan="1";
     if(r.tosou==="1") row.tosou="1";
     if(r.zaiko==="1") row.zaiko="1";
@@ -1833,7 +1864,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
 });
 // expose for inline onclick
-Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,yahooShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline,saveDocType,honjitsuRun,seinoPdfView,genConfirmMail,sendConfirmMail,toggleTaishogai,archiveIchiba,kakouEdAddRow,kakouEdDelRow,kakouEdCopyRow,kakouEdSubmit});
+Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,yahooShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline,saveDocType,honjitsuRun,seinoPdfView,genConfirmMail,sendConfirmMail,toggleTaishogai,archiveIchiba,kakouEdAddRow,kakouEdDelRow,kakouEdCopyRow,kakouEdRecalc,kakouEdSubmit});
 </script>
 </body>
 </html>
