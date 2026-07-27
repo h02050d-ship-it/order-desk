@@ -584,7 +584,8 @@ function parseItem(name){
   const s=String(name||"").replace(/[　]/g," ").replace(/\s+/g," ").trim();
   const grade=(s.match(/([A-C])\s*級/)||[])[1]||"";
   const wood=/杉|すぎ|スギ/.test(s)?"杉":(/桧|檜|ひのき|ヒノキ/.test(s)?"桧":"");
-  const type=(s.match(/フローリング|羽目板|野地板|スノコ板?|破風板?|笠木|框|無垢板/)||[])[0]||"";
+  let type=(s.match(/フローリング|羽目板|野地板|スノコ板?|破風板?|笠木|框|無垢板/)||[])[0]||"";
+  if(/目透/.test(s)) type="羽目板"; else if(/突付|突き付|突きつけ|本実突/.test(s)) type="フローリング"; // 本実目透=羽目板 / 本実突付=フローリング（工法で確定）
   const dim=(s.match(/\d{1,3}\s*[×x]\s*\d{1,3}\s*[×x]\s*\d{3,4}/)||[""])[0].replace(/\s/g,"").replace(/x/gi,"×");
   let qty=""; const qm=s.match(/【\s*(\d+)\s*枚/)||s.match(/(\d+)\s*枚入/); if(qm) qty=qm[1]+"枚入";
   const fushi=(s.match(/特上無節|無節特上|特選上小|選上小|特上小節|特上小|上小節|小節|丸節|生節|無節|特上|節有|節あり|節無|節|小/)||[])[0]||"";
@@ -983,7 +984,7 @@ function _kakouEdBody_(){
       <td><input type="checkbox" data-k="tosou" ${r.tosou==="1"?"checked":""}></td>
       <td><input type="checkbox" data-k="zaiko" ${r.zaiko==="1"?"checked":""}></td>
       <td><input class="txt" data-k="remark" value="${esc(r.remark||"")}" style="width:150px;text-align:left" placeholder="支店止め・着指定など" /></td>
-      <td>${ed.rows.length>1?`<button class="btn ghost sm" onclick="kakouEdDelRow(${i})">🗑</button>`:""}</td>
+      <td style="white-space:nowrap"><button class="btn ghost sm" title="この行をコピー（1山の上限で分ける時など）" onclick="kakouEdCopyRow(${i})">📋</button>${ed.rows.length>1?`<button class="btn ghost sm" onclick="kakouEdDelRow(${i})">🗑</button>`:""}</td>
     </tr>`).join("");
   $("#d-body").innerHTML=`
     <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">内容を確認し、必要なら編集してから追加してください（原本と見比べを推奨）。</div>
@@ -992,7 +993,7 @@ function _kakouEdBody_(){
       <input class="txt" id="ked-cust" value="${esc(ed.rows[0].customer||"")}" style="flex:1" />
     </div>
     <div class="ked-wrap"><table class="ked-t">
-      <thead><tr><th>配送</th><th>品名</th><th>等級</th><th>厚さ</th><th>幅</th><th>長さ</th><th>入数</th><th>予定</th><th>シール</th><th>段ボ</th><th>両端</th><th>塗装</th><th>加在</th><th>備考</th><th></th></tr></thead>
+      <thead><tr><th>配送</th><th>品名</th><th>等級</th><th>厚さ</th><th>幅</th><th>長さ</th><th>入数</th><th>予定</th><th>シール</th><th>段ボ</th><th>両端</th><th>塗装</th><th>加在</th><th>備考</th><th>複製/削除</th></tr></thead>
       <tbody>${trs}</tbody>
     </table></div>
     <button class="btn ghost" style="width:100%" onclick="kakouEdAddRow()">＋ 行を追加</button>
@@ -1014,6 +1015,7 @@ function _kakouEdCollect_(){
 }
 function kakouEdAddRow(){ _kakouEdCollect_(); const ed=state._kakouEd; const o=getOrder(ed.id); const b=_kakouBlankRow_(o); b.customer=ed.rows[0].customer; ed.rows.push(b); _kakouEdBody_(); }
 function kakouEdDelRow(i){ _kakouEdCollect_(); state._kakouEd.rows.splice(i,1); _kakouEdBody_(); }
+function kakouEdCopyRow(i){ _kakouEdCollect_(); const ed=state._kakouEd; ed.rows.splice(i+1,0,Object.assign({},ed.rows[i])); _kakouEdBody_(); } // 同一内容を直下に複製（1山上限で分ける等・数量だけ直せばOK）
 async function kakouEdSubmit(){
   _kakouEdCollect_();
   const ed=state._kakouEd, o=getOrder(ed.id); if(!o) return;
@@ -1119,6 +1121,15 @@ async function sendConfirmMail(){
   }catch(e){ toast("通信エラー"); }
 }
 function toggleTaishogai(){ state.showTaishogai=!state.showTaishogai; render(); }
+// 市場注文をアーカイブ（重複・誤取込など）。docType=対象外＋完了へ→ボードから消えるが「対象外アーカイブを表示」で戻せる
+function archiveIchiba(id){
+  const o=getOrder(id||state.drawer.id); if(!o) return;
+  if(!confirm("この注文をアーカイブします（ボードから消えます）。\n\n"+(o.customer||"")+"\n"+(o.items||[]).map(i=>"・"+cleanItem(i.name)+" ×"+i.qty).join("\n")+"\n\n※市場タブ下部の「対象外アーカイブを表示」からいつでも戻せます。")) return;
+  o.docType="対象外"; o.status="done";
+  const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv){ sv.docType="対象外"; sv.status="done"; }
+  apiPost({action:"order", id:o.id, docType:"対象外", status:"done"});
+  closeDrawer(); render(); toast("🗂 アーカイブしました（対象外へ）");
+}
 function saveDocType(v){ // 市場：注文/見積り/要確認/対象外 の切替（対象外は完了列へ退避）
   const o=getOrder(state.drawer.id); if(!o) return;
   o.docType=v; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.docType=v;
@@ -1419,6 +1430,7 @@ function openOrderDrawer(id){
   `;
   $("#d-foot").innerHTML=`
     <button class="btn ghost" onclick="closeDrawer()">閉じる</button>
+    ${o.mall==="ichiba"?`<button class="btn ghost" style="color:#c0392b;border-color:#e6b0aa" onclick="archiveIchiba('${o.id}')">🗂 アーカイブ</button>`:""}
     <button class="btn primary grow" onclick="saveOrderFromDrawer()">保存</button>
   `;
   $("#o-status").querySelectorAll("button").forEach(b=>{
@@ -1821,7 +1833,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
 });
 // expose for inline onclick
-Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,yahooShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline,saveDocType,honjitsuRun,seinoPdfView,genConfirmMail,sendConfirmMail,toggleTaishogai,kakouEdAddRow,kakouEdDelRow,kakouEdSubmit});
+Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,yahooShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline,saveDocType,honjitsuRun,seinoPdfView,genConfirmMail,sendConfirmMail,toggleTaishogai,archiveIchiba,kakouEdAddRow,kakouEdDelRow,kakouEdCopyRow,kakouEdSubmit});
 </script>
 </body>
 </html>
