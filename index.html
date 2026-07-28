@@ -843,6 +843,26 @@ async function kakouExisting_(){
   const snap=await kakouDb.ref("items").once("value");
   return Object.values(snap.val()||{});
 }
+// この注文に紐づく加工予定表行の「忘れちゃいけないメモ」を集める
+// 自動登録行(od_注文ID_*)と手入力行(取引先に姓を含む・未出荷)の両方を見る
+async function kakouNotesFor(o){
+  try{
+    if(!kakouDb) return [];
+    const snap=await kakouDb.ref("items").once("value");
+    const items=Object.values(snap.val()||{});
+    const idPre=("od_"+String(o.id||o.orderNo)+"_").replace(/[.#$/\[\]:]/g,"_");
+    const sur=kakouSur(o.customer);
+    const notes=[];
+    items.forEach(e=>{
+      const note=String(e.important_note||"").trim();
+      if(!note) return;
+      const isOd=String(e._uid||"").indexOf(idPre)===0;
+      const isManual=!!sur && !e.archived && String(e.customer||"").includes(sur);
+      if(isOd||isManual) notes.push((e.customer?e.customer+"：":"")+note);
+    });
+    return [...new Set(notes)];
+  }catch(err){ return []; }
+}
 function kakouDupOf_(row, existing){
   const sur=String(row.customer||"").replace(/様$/,"");
   if(!sur) return null;
@@ -947,6 +967,9 @@ async function seinoIssueFromDrawer(){
   // 備考がある注文は、送り状発行前に内容を再提示して確認（着指定・支店変更・置き場所指定などの見落とし防止）
   const rmk=String(o.remarks||"").trim();
   if(rmk && !confirm("📝 この注文にはお客様備考があります。\n\n─────────────\n"+rmk+"\n─────────────\n\n備考の内容を確認しました。このまま送り状を発行して大丈夫ですか？")) return;
+  // 加工予定表の「忘れちゃいけないメモ」があれば発行前にポップアップ（見落とし防止）
+  const kkNotes=await kakouNotesFor(o);
+  if(kkNotes.length && !confirm("📌 加工予定表の『忘れちゃいけないメモ』があります！\n\n─────────────\n"+kkNotes.join("\n")+"\n─────────────\n\n内容を確認しました。このまま送り状を発行して大丈夫ですか？")) return;
   // 法人＝法人名の入力＋住所の確認チェックが必須（住所はプリフィル・違えば修正して発行）
   let corpName="", corpZip="", corpAddr="";
   if(o.custType==="法人"){
