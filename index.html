@@ -944,10 +944,14 @@ async function seinoIssueFromDrawer(){
   const rmk=String(o.remarks||"").trim();
   if(rmk && !confirm("📝 この注文にはお客様備考があります。\n\n─────────────\n"+rmk+"\n─────────────\n\n備考の内容を確認しました。このまま送り状を発行して大丈夫ですか？")) return;
   const addr=(o.shipAddr&&/[都道府県市区町村]/.test(o.shipAddr))?o.shipAddr:(o.opMemo||"");
-  if(!confirm("【西濃で送り状発行＋印刷】🟢本番\n\n届け先: "+(o.customer||"")+"\n〒"+(o.shipZip||"?")+" "+(addr||"住所未取得")+(o.custType==="個人"&&o.branch?"\n止め: "+o.branch+"支店（住所は支店に自動変換）":"")+"\n個口: "+kouguchiTotal(o)+"個口"+(o.deliveryDate?("\n⏰ 着指定: "+o.deliveryDate+"（送り状に配達指定で反映）"):"")+"\n\n西濃へ本番の出荷登録をし、会社PCの HL-L2375DW でA5自動印刷します。よろしいですか？")) return;
+  const shipDate=(document.getElementById("seino-date")?.value||"").trim();  // 発送日（デフォ当日・明日以降に変更可）
+  window._seinoShipDate=shipDate;
+  const _td=new Date(); const _tds=`${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,"0")}-${String(_td.getDate()).padStart(2,"0")}`;
+  const dateNote="\n📅 発送日: "+((shipDate&&shipDate!==_tds)?(shipDate+"（⚠️本日ではありません）"):"本日");
+  if(!confirm("【西濃で送り状発行＋印刷】🟢本番\n\n届け先: "+(o.customer||"")+"\n〒"+(o.shipZip||"?")+" "+(addr||"住所未取得")+(o.custType==="個人"&&o.branch?"\n止め: "+o.branch+"支店（住所は支店に自動変換）":"")+"\n個口: "+kouguchiTotal(o)+"個口"+dateNote+(o.deliveryDate?("\n⏰ 着指定: "+o.deliveryDate+"（送り状に配達指定で反映）"):"")+"\n\n西濃へ本番の出荷登録をし、会社PCの HL-L2375DW でA5自動印刷します。よろしいですか？")) return;
   toast("西濃で発行中…");
   try{
-    const u=new URL(API_URL); u.searchParams.set("action","seinoissue"); u.searchParams.set("id",o.id); u.searchParams.set("email",CRED.email); u.searchParams.set("pass",CRED.pass);
+    const u=new URL(API_URL); u.searchParams.set("action","seinoissue"); u.searchParams.set("id",o.id); if(window._seinoShipDate) u.searchParams.set("date",window._seinoShipDate); u.searchParams.set("email",CRED.email); u.searchParams.set("pass",CRED.pass);
     const res=await fetch(u.toString()).then(r=>r.json());
     if(res.ok){
       o.seinoOkurijoNo=res.okurijoNo; toast("✅ 送り状番号 "+res.okurijoNo+" 発行。HL-L2375DWで印刷します（数十秒）");
@@ -1470,8 +1474,12 @@ function openOrderDrawer(id){
         <button class="btn ghost sm" style="flex:1" onclick="window.open('https://track.seino.co.jp/kamotsu/GempyoNoShokai.do?GNPNO1=${esc(o.seinoOkurijoNo)}','_blank')">📍 配達状況を追跡</button>
         <button class="btn ghost sm" style="flex:1" onclick="seinoPdfView('${esc(o.seinoOkurijoNo)}')">📄 送り状PDFを見る</button>
       </div>`:""}
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+        <span style="font-size:12px;color:var(--muted);flex:0 0 auto">発送日</span>
+        <input class="txt" id="seino-date" type="date" value="${today}" min="${today}" style="flex:1" />
+      </div>
       <button class="btn primary" style="width:100%" onclick="seinoIssueFromDrawer()">🚚 西濃で送り状発行＋印刷（${kouguchiTotal(o)}個口）</button>
-      <div style="font-size:11px;color:var(--muted);margin-top:6px">🟢 本番・会社PCでA5自動印刷。訂正は右上「KM2」から。</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">🟢 本番・会社PCでA5自動印刷。訂正は右上「KM2」から。明日以降の発送は発送日を変えて発行。</div>
     `:`
       <button class="btn ghost" style="width:100%" onclick="copyShipInfo()">🚚 送り状の宛先情報をコピー（${kouguchiTotal(o)}個口）</button>
       <div style="font-size:11px;color:var(--muted);margin-top:6px">コピー後「<b>${esc(shipCarrier(o))}の送り状発行して</b>」と依頼。</div>
