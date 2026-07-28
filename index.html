@@ -654,6 +654,13 @@ function orderName(o){ return o.customer ? esc(o.customer)+" 様" : "＃"+esc(St
 // 楽天の進捗ラベル・2m以上(運賃見積り要)判定
 const RK_PROGRESS_LABEL={100:"注文確認待ち",200:"楽天処理中",300:"発送待ち",400:"変更確定待ち",500:"発送済",600:"入金待ち",700:"入金済"};
 function itemMaxLen(o){ let mx=0; (o.items||[]).forEach(i=>{ const d=parseItem(i.name).dim; if(d){ const p=d.split("×"); const L=Number(p[p.length-1])||0; if(L>mx) mx=L; } }); return mx; }
+// 加工予定表の表示名用の姓/社名（法人は「株式会社 樓蘭」→樓蘭。旧ロジックは1語目=「株式会社」になるバグ）
+function kakouSur(customer){
+  const parts=String(customer||"").trim().split(/[ 　]+/).filter(Boolean);
+  if(!parts.length) return "";
+  if(/^(株式会社|有限会社|合同会社|合資会社|\(株\)|（株）|\(有\)|（有）)$/.test(parts[0]) && parts[1]) return parts[1];
+  return (parts[0].replace(/^(株式会社|有限会社|合同会社|\(株\)|（株）|\(有\)|（有）)/,"")||parts[0]);
+}
 function needsFreight(o){ return (o.mall==="rakuten"||o.mall==="yahoo") && itemMaxLen(o)>=1820; } // 2m以上＝運賃見積り（楽天・ヤフーとも。2m=1820表記）
 // 運賃ツール連携URL（届け先住所＋都道府県＋長さ区分＋束数を渡して自動計算・営業所検索）
 const FARE_URL="https://h02050d-ship-it.github.io/fare-calculator/";
@@ -808,7 +815,7 @@ function kakouRowsFor(o){
     if(o.deliveryDate) rem.push(o.deliveryDate.slice(5).replace("-","/")+"着指定");
     if(p.grade==="B" && !/^B/.test(grade)) rem.push("B級品");
     const pre=o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":o.mall==="ichiba"?"":"ネット";  // 名前プレフィックス(様なし)
-    const sur=o.mall==="ichiba"?String(o.customer||"").trim():(String(o.customer||"").split(/[ 　]/)[0]||"");  // 市場は社名そのまま
+    const sur=o.mall==="ichiba"?String(o.customer||"").trim():kakouSur(o.customer);  // 市場は社名そのまま・ECは姓/法人名主要部
     const carVal=carrier==="西濃"?"西濃":"";  // 配送列（加工予定表は西濃/内藤中心。佐川宅配は空）
     const danballVal=(carVal==="西濃"||/無節|特上小/.test(grade))?"有":"無";  // 西濃必須 or 特上小/無節のみ段ボール（丸節等は無）
     const uid=("od_"+String(o.id||o.orderNo)+"_"+idx).replace(/[.#$/\[\]:]/g,"_");
@@ -976,7 +983,7 @@ function _kakouAutoSD_(row){
 }
 function _kakouBlankRow_(o){
   const pre=o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":o.mall==="ichiba"?"":"ネット";
-  const sur=o.mall==="ichiba"?String(o.customer||"").trim():(String(o.customer||"").split(/[ 　]/)[0]||"");
+  const sur=o.mall==="ichiba"?String(o.customer||"").trim():kakouSur(o.customer);
   const car=shipCarrier(o);
   const carrier=o.mall==="ichiba" ? "" : (car==="西濃"?"西濃":""); // 市場は既定なし・ECは西濃のみ（佐川は加工予定表の配送欄では扱わない）
   const row={customer:pre+sur, carrier:carrier, hinmei:"F", grade:"-",
@@ -1080,7 +1087,7 @@ async function kakouEdSubmit(){
       customer:r.customer, carrier:r.carrier||"", hinmei:r.hinmei, grade:r.grade,
       thickness:r.thickness, width:r.width, length:r.length,
       qty:String(r.qty), planned:String(r.planned||"1"), actual:ed.actual,
-      seal:r.seal||"無", danball:r.danball||"無", remark:r.remark||""};
+      seal:r.seal||"無", danball:r.danball||"無", remark:r.remark||"", humanchk:"1"};  // エディタ経由=人が確認して追加→確認済み
     if(r.ryoutan==="1") row.ryoutan="1";
     if(r.tosou==="1") row.tosou="1";
     if(r.zaiko==="1") row.zaiko="1";
@@ -1167,7 +1174,7 @@ async function sendConfirmMail(){
   if(!confirm("お客様に配送確認メールを送信します。\n\n宛先：お客様の楽天メルアド\nFrom：info@hayazai.com\n\nプレビューの内容で送信してよろしいですか？")) return;
   toast("📨 送信中…");
   try{
-    const r=await apiCall({action:"rkSendMail", id:o.id, orderNo:o.orderNo, subject:"【林材木店】ご注文・配送の確認", body});
+    const r=await apiCall({action:"rkSendMail", id:o.id, orderNo:o.orderNo, subject:"【要返信】ご注文・配送の確認（林材木店）", body});
     if(r.ok){
       o.mailSent=true; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.mailSent=true;
       toast("📨 送信しました（メール送信済み✅）"); render(); openOrderDrawer(o.id);
