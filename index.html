@@ -1499,6 +1499,14 @@ function openOrderDrawer(id){
   });
   openDrawer();
   autoPrepareMail(o);   // 対象注文なら開いた瞬間に送料計算＋配送確認メール文面を自動用意（確認して送信だけの状態に）
+  maybeRemarkPopup(o);  // 備考の見落とし防止ポップアップ
+}
+// 備考の見落とし防止: 備考ありの注文を開いたらポップアップ（注文ごとに初回のみ・備考が変わったら再表示・完了は出さない）
+function maybeRemarkPopup(o){
+  const r=String(o.remarks||"").trim(); if(!r || o.status==="done") return;
+  const key="remarkAck_"+o.id;
+  try{ if(localStorage.getItem(key)===r) return; }catch(e){}
+  setTimeout(()=>{ alert("📝 お客様備考があります（見落とし注意）\n\n"+r); try{ localStorage.setItem(key,r); }catch(e){} }, 150);
 }
 // 楽天・新規・西濃(配送確認要)・メール未送信の注文は、ドロワーを開いた瞬間に運賃計算→文面生成まで自動実行。
 // 送料が届き次第 genConfirmMail が走り、プレビュー＋「📨送信」ボタンが出る＝手動の運賃計算/文面生成クリックが不要に。
