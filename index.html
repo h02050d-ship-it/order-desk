@@ -654,7 +654,7 @@ function orderName(o){ return o.customer ? esc(o.customer)+" 様" : "＃"+esc(St
 // 楽天の進捗ラベル・2m以上(運賃見積り要)判定
 const RK_PROGRESS_LABEL={100:"注文確認待ち",200:"楽天処理中",300:"発送待ち",400:"変更確定待ち",500:"発送済",600:"入金待ち",700:"入金済"};
 function itemMaxLen(o){ let mx=0; (o.items||[]).forEach(i=>{ const d=parseItem(i.name).dim; if(d){ const p=d.split("×"); const L=Number(p[p.length-1])||0; if(L>mx) mx=L; } }); return mx; }
-function needsFreight(o){ return o.mall==="rakuten" && itemMaxLen(o)>=1820; } // 2m以上＝運賃見積り（楽天表記の2m=1820）
+function needsFreight(o){ return (o.mall==="rakuten"||o.mall==="yahoo") && itemMaxLen(o)>=1820; } // 2m以上＝運賃見積り（楽天・ヤフーとも。2m=1820表記）
 // 運賃ツール連携URL（届け先住所＋都道府県＋長さ区分＋束数を渡して自動計算・営業所検索）
 const FARE_URL="https://h02050d-ship-it.github.io/fare-calculator/";
 function lengthClass(len){ return len>=4000?4:len>=3000?3:len>=1820?2:1; }
@@ -688,13 +688,21 @@ function loadFareInline(btn){
   if(window._fareMsgHandler) window.removeEventListener('message', window._fareMsgHandler);
   window._fareMsgHandler=(ev)=>{
     const d=ev.data; if(!d||d.type!=='fareSummary') return;
-    if(o) window._fareLast={id:o.id, total:d.total||'', officeName:d.officeName||'', officeAddr:d.officeAddr||'', officeDist:d.officeDist||''}; // メール文面生成・支店住所表示用
+    if(o) window._fareLast={id:o.id, total:d.total||'', officeName:d.officeName||'', officeAddr:d.officeAddr||'', officeDist:d.officeDist||'', mix:d.mix||'', dist:d.dist||'', weight:d.weight||''}; // メール文面生成・支店住所表示用
     if(o && window._autoDraftId===o.id && d.total){ window._autoDraftId=null; try{ genConfirmMail(); }catch(e){} }  // 自動下書き(開いた瞬間): 送料到着→文面を自動生成（本土のみ）
     if(o && window._genOnFare===o.id){ window._genOnFare=null; try{ genConfirmMail(); }catch(e){} }  // 「生成」ボタンからの運賃計算: 到着したら文面生成（総額なしでも生成し手入力を促す）
     const ba=document.getElementById('branch-addr'); if(ba&&d.officeAddr) ba.textContent=d.officeAddr; // 届け先欄の支店住所を更新
     const bl=document.getElementById('branch-line'); if(bl&&d.officeName) bl.textContent='西濃運輸 '+String(d.officeName).replace(/営業所$|支店$/,'')+'支店止め';
     const rows=[];
     if(o&&o.custType==="個人"&&d.officeName){ const b=String(d.officeName).replace(/営業所$|支店$/,''); rows.push(`<div class="prep-line"><span>🏢 支店止め</span><span><b>${esc(b)}支店止め</b>${d.officeDist?`（${esc(d.officeDist)}）`:""}</span></div>`); }
+    if(d.mix) rows.push(`<div class="prep-line"><span>📦 数量</span><span>${esc(d.mix)}</span></div>`);
+    // 再発防止: 運賃ツールが計算した数量と、注文明細から算出した束数が食い違ったら警告（混載の渡し漏れ・手修正忘れ検知）
+    if(o&&d.mix){
+      const by=sokuTabaByLen(o); const expect=[1,2,3,4].filter(n=>by[n]>0).map(n=>n+'m×'+by[n]+'束').join(' + ');
+      if(expect && d.mix!==expect) rows.push(`<div class="prep-line" style="color:#c0392b;font-weight:800"><span>⚠️ 数量不一致</span><span>注文明細からは ${esc(expect)} のはず→要確認</span></div>`);
+    }
+    if(d.dist||d.weight) rows.push(`<div class="prep-line"><span>🚚 距離・重量帯</span><span>${esc(d.dist||'')}${(d.dist&&d.weight)?'／':''}${esc(d.weight||'')}</span></div>`);
+    if(d.box&&!/^0円?$/.test(String(d.box))) rows.push(`<div class="prep-line"><span>🗃 段ボール代</span><span>${esc(d.box)}</span></div>`);
     if(d.total) rows.push(`<div class="prep-line"><span>💰 送料（税込）</span><span style="font-weight:800;font-size:15px">${esc(d.total)}</span></div>`);
     if(!rows.length) return;
     sum.innerHTML=rows.join('')+`<div style="text-align:right;margin-top:4px"><a href="#" onclick="event.preventDefault();const fr=this.closest('.fare-inline').querySelector('iframe');fr.style.display=(fr.style.display==='none')?'block':'none'" style="font-size:11px;color:var(--muted)">🔍 詳細（内訳・営業所一覧）を開閉</a></div>`;
