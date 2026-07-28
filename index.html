@@ -659,7 +659,22 @@ function needsFreight(o){ return o.mall==="rakuten" && itemMaxLen(o)>=1820; } //
 const FARE_URL="https://h02050d-ship-it.github.io/fare-calculator/";
 function lengthClass(len){ return len>=4000?4:len>=3000?3:len>=1820?2:1; }
 function sokuTaba(o){ let t=0; (o.items||[]).forEach(it=>{const p=parseItem(it.name); if(!p.dim) return; const d=p.dim.split("×"); const len=Number(d[2])||0; const per=parseInt(p.qty)||0,n=Number(it.qty)||1,tot=per*n; if(!tot) return; t+=Math.ceil(tot/(len<1820?20:10));}); return t||1; }
-function fareUrl(o){ const u=new URL(FARE_URL); if(o.shipPref)u.searchParams.set('pref',o.shipPref); u.searchParams.set('len',lengthClass(itemMaxLen(o))); u.searchParams.set('qty',sokuTaba(o)); if(o.shipAddr)u.searchParams.set('addr',o.shipAddr); return u.toString(); }
+// 長さクラス(1m/2m/3m/4m)別の束数を集計（混載運賃の正確計算用）
+function sokuTabaByLen(o){
+  const by={1:0,2:0,3:0,4:0};
+  (o.items||[]).forEach(it=>{const p=parseItem(it.name); if(!p.dim) return; const d=p.dim.split("×"); const len=Number(d[2])||0; const per=parseInt(p.qty)||0,n=Number(it.qty)||1,tot=per*n; if(!tot) return; by[lengthClass(len)]+=Math.ceil(tot/(len<1820?20:10));});
+  return by;
+}
+function fareUrl(o){
+  const u=new URL(FARE_URL); if(o.shipPref)u.searchParams.set('pref',o.shipPref);
+  const by=sokuTabaByLen(o), classes=Object.keys(by).filter(k=>by[k]>0);
+  if(classes.length>=2){ // 混載＝長さ別束数(q1〜q4)で渡す（最大長×総束数だと過大計算になるため）
+    classes.forEach(k=>u.searchParams.set('q'+k,by[k]));
+  } else {
+    u.searchParams.set('len',lengthClass(itemMaxLen(o))); u.searchParams.set('qty',sokuTaba(o));
+  }
+  if(o.shipAddr)u.searchParams.set('addr',o.shipAddr); return u.toString();
+}
 function loadFareInline(btn){
   const box=btn.parentElement.querySelector('.fare-inline'); if(!box) return;
   if(box.dataset.loaded){ box.style.display=(box.style.display==='none')?'block':'none'; return; }
