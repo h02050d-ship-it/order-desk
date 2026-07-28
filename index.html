@@ -940,6 +940,9 @@ function copyShipInfo(){
 // 西濃で送り状発行（API出荷登録→印刷ジョブ→会社PCで自動A5印刷）
 async function seinoIssueFromDrawer(){
   const o=getOrder(state.drawer.id); if(!o) return;
+  // 備考がある注文は、送り状発行前に内容を再提示して確認（着指定・支店変更・置き場所指定などの見落とし防止）
+  const rmk=String(o.remarks||"").trim();
+  if(rmk && !confirm("📝 この注文にはお客様備考があります。\n\n─────────────\n"+rmk+"\n─────────────\n\n備考の内容を確認しました。このまま送り状を発行して大丈夫ですか？")) return;
   const addr=(o.shipAddr&&/[都道府県市区町村]/.test(o.shipAddr))?o.shipAddr:(o.opMemo||"");
   if(!confirm("【西濃で送り状発行＋印刷】🟢本番\n\n届け先: "+(o.customer||"")+"\n〒"+(o.shipZip||"?")+" "+(addr||"住所未取得")+(o.custType==="個人"&&o.branch?"\n止め: "+o.branch+"支店（住所は支店に自動変換）":"")+"\n個口: "+kouguchiTotal(o)+"個口"+(o.deliveryDate?("\n⏰ 着指定: "+o.deliveryDate+"（送り状に配達指定で反映）"):"")+"\n\n西濃へ本番の出荷登録をし、会社PCの HL-L2375DW でA5自動印刷します。よろしいですか？")) return;
   toast("西濃で発行中…");
