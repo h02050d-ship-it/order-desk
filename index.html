@@ -943,15 +943,25 @@ async function seinoIssueFromDrawer(){
   // 備考がある注文は、送り状発行前に内容を再提示して確認（着指定・支店変更・置き場所指定などの見落とし防止）
   const rmk=String(o.remarks||"").trim();
   if(rmk && !confirm("📝 この注文にはお客様備考があります。\n\n─────────────\n"+rmk+"\n─────────────\n\n備考の内容を確認しました。このまま送り状を発行して大丈夫ですか？")) return;
-  const addr=(o.shipAddr&&/[都道府県市区町村]/.test(o.shipAddr))?o.shipAddr:(o.opMemo||"");
+  // 法人＝お客様に確認した法人名・〒・住所の入力が必須（注文情報と異なる場合があるため空欄スタート）
+  let corpName="", corpZip="", corpAddr="";
+  if(o.custType==="法人"){
+    corpName=(document.getElementById("seino-corp-name")?.value||"").trim();
+    corpZip=(document.getElementById("seino-corp-zip")?.value||"").trim();
+    corpAddr=(document.getElementById("seino-corp-addr")?.value||"").trim();
+    if(!corpName||!corpZip||!corpAddr){ alert("🏢 法人の届け先が未入力です。\n\nお客様に確認した「法人名・〒・住所」を入力してから発行してください（注文情報のままとは限らないため必須です）。"); return; }
+  }
+  const addr=corpAddr||((o.shipAddr&&/[都道府県市区町村]/.test(o.shipAddr))?o.shipAddr:(o.opMemo||""));
   const shipDate=(document.getElementById("seino-date")?.value||"").trim();  // 発送日（デフォ当日・明日以降に変更可）
   window._seinoShipDate=shipDate;
   const _td=new Date(); const _tds=`${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,"0")}-${String(_td.getDate()).padStart(2,"0")}`;
   const dateNote="\n📅 発送日: "+((shipDate&&shipDate!==_tds)?(shipDate+"（⚠️本日ではありません）"):"本日");
-  if(!confirm("【西濃で送り状発行＋印刷】🟢本番\n\n届け先: "+(o.customer||"")+"\n〒"+(o.shipZip||"?")+" "+(addr||"住所未取得")+(o.custType==="個人"&&o.branch?"\n止め: "+o.branch+"支店（住所は支店に自動変換）":"")+"\n個口: "+kouguchiTotal(o)+"個口"+dateNote+(o.deliveryDate?("\n⏰ 着指定: "+o.deliveryDate+"（送り状に配達指定で反映）"):"")+"\n\n西濃へ本番の出荷登録をし、会社PCの HL-L2375DW でA5自動印刷します。よろしいですか？")) return;
+  if(!confirm("【西濃で送り状発行＋印刷】🟢本番\n\n届け先: "+(corpName||o.customer||"")+"\n〒"+(corpZip||o.shipZip||"?")+" "+(addr||"住所未取得")+(o.custType==="個人"&&o.branch?"\n止め: "+o.branch+"支店（住所は支店に自動変換）":"")+(corpName?"\n（法人・確認済みの届け先で発行）":"")+"\n個口: "+kouguchiTotal(o)+"個口"+dateNote+(o.deliveryDate?("\n⏰ 着指定: "+o.deliveryDate+"（送り状に配達指定で反映）"):"")+"\n\n西濃へ本番の出荷登録をし、会社PCの HL-L2375DW でA5自動印刷します。よろしいですか？")) return;
   toast("西濃で発行中…");
   try{
-    const u=new URL(API_URL); u.searchParams.set("action","seinoissue"); u.searchParams.set("id",o.id); if(window._seinoShipDate) u.searchParams.set("date",window._seinoShipDate); u.searchParams.set("email",CRED.email); u.searchParams.set("pass",CRED.pass);
+    const u=new URL(API_URL); u.searchParams.set("action","seinoissue"); u.searchParams.set("id",o.id); if(window._seinoShipDate) u.searchParams.set("date",window._seinoShipDate);
+    if(corpName){ u.searchParams.set("name",corpName); u.searchParams.set("zip",corpZip); u.searchParams.set("addr",corpAddr); }  // 法人=確認済みの届け先で発行
+    u.searchParams.set("email",CRED.email); u.searchParams.set("pass",CRED.pass);
     const res=await fetch(u.toString()).then(r=>r.json());
     if(res.ok){
       o.seinoOkurijoNo=res.okurijoNo; toast("✅ 送り状番号 "+res.okurijoNo+" 発行。HL-L2375DWで印刷します（数十秒）");
@@ -1473,6 +1483,15 @@ function openOrderDrawer(id){
       <div style="display:flex;gap:8px;margin:6px 0">
         <button class="btn ghost sm" style="flex:1" onclick="window.open('https://track.seino.co.jp/kamotsu/GempyoNoShokai.do?GNPNO1=${esc(o.seinoOkurijoNo)}','_blank')">📍 配達状況を追跡</button>
         <button class="btn ghost sm" style="flex:1" onclick="seinoPdfView('${esc(o.seinoOkurijoNo)}')">📄 送り状PDFを見る</button>
+      </div>`:""}
+      ${o.custType==="法人"?`
+      <div style="border:1.5px solid #e6910044;background:#e6910010;border-radius:8px;padding:8px 10px;margin-bottom:8px">
+        <div style="font-size:11.5px;font-weight:800;margin-bottom:6px">🏢 法人の届け先（お客様に確認した内容を入力・注文情報と違う場合があるため必須）</div>
+        <input class="txt" id="seino-corp-name" placeholder="法人名・屋号（例：株式会社◯◯ ◯◯支店）" style="margin-bottom:6px" />
+        <div style="display:flex;gap:6px">
+          <input class="txt" id="seino-corp-zip" placeholder="〒" style="flex:0 0 110px" />
+          <input class="txt" id="seino-corp-addr" placeholder="住所（会社名の記載がある確認済み住所）" style="flex:1" />
+        </div>
       </div>`:""}
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
         <span style="font-size:12px;color:var(--muted);flex:0 0 auto">発送日</span>
