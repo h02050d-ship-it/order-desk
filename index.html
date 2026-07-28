@@ -650,7 +650,11 @@ function itemLineHTML(it){
   </div>`;
 }
 function itemsSummaryHTML(items){ return (items||[]).map(itemLineHTML).join(''); }
-function orderName(o){ return o.customer ? esc(o.customer)+" 様" : "＃"+esc(String(o.orderNo||"").split("-").pop()); }
+function corpAbbrev(s){ return String(s||"").replace(/株式会社/g,"(株)").replace(/有限会社/g,"(有)").replace(/合同会社/g,"(同)").replace(/合資会社/g,"(資)").trim(); } // 法人格の略記
+function orderName(o){
+  const base=o.customer ? esc(o.customer)+" 様" : "＃"+esc(String(o.orderNo||"").split("-").pop());
+  return o.corpName ? base+'<span style="font-weight:700;opacity:.85">｜'+esc(corpAbbrev(o.corpName))+'</span>' : base; // 確認済みの法人名を併記（送り状宛名・予定表との照合用）
+}
 // 楽天の進捗ラベル・2m以上(運賃見積り要)判定
 const RK_PROGRESS_LABEL={100:"注文確認待ち",200:"楽天処理中",300:"発送待ち",400:"変更確定待ち",500:"発送済",600:"入金待ち",700:"入金済"};
 function itemMaxLen(o){ let mx=0; (o.items||[]).forEach(i=>{ const d=parseItem(i.name).dim; if(d){ const p=d.split("×"); const L=Number(p[p.length-1])||0; if(L>mx) mx=L; } }); return mx; }
@@ -943,28 +947,42 @@ async function seinoIssueFromDrawer(){
   // 備考がある注文は、送り状発行前に内容を再提示して確認（着指定・支店変更・置き場所指定などの見落とし防止）
   const rmk=String(o.remarks||"").trim();
   if(rmk && !confirm("📝 この注文にはお客様備考があります。\n\n─────────────\n"+rmk+"\n─────────────\n\n備考の内容を確認しました。このまま送り状を発行して大丈夫ですか？")) return;
-  // 法人＝お客様に確認した法人名・〒・住所の入力が必須（注文情報と異なる場合があるため空欄スタート）
+  // 法人＝法人名の入力＋住所の確認チェックが必須（住所はプリフィル・違えば修正して発行）
   let corpName="", corpZip="", corpAddr="";
   if(o.custType==="法人"){
     corpName=(document.getElementById("seino-corp-name")?.value||"").trim();
     corpZip=(document.getElementById("seino-corp-zip")?.value||"").trim();
     corpAddr=(document.getElementById("seino-corp-addr")?.value||"").trim();
-    if(!corpName||!corpZip||!corpAddr){ alert("🏢 法人の届け先が未入力です。\n\nお客様に確認した「法人名・〒・住所」を入力してから発行してください（注文情報のままとは限らないため必須です）。"); return; }
+    if(!corpName){ alert("🏢 法人名が未入力です。\n\nお客様に確認した法人名・屋号を入力してください（送り状の宛名になります）。"); return; }
+    if(!document.getElementById("seino-addr-ok")?.checked){ alert("📍 届け先住所の確認チェックが入っていません。\n\n住所に間違いがないか確認し、チェックを入れてから発行してください。"); return; }
+    if(!corpZip||!corpAddr){ alert("📍 〒・住所が空欄です。確認のうえ入力してください。"); return; }
+  }
+  // 着指定の変更チェック（備考・日付指定と違う日への変更は確認ポップアップ）
+  let dueOv="";
+  if(o.deliveryDate){
+    dueOv=(document.getElementById("seino-due")?.value||"").trim();
+    if(dueOv && dueOv!==o.deliveryDate){
+      if(!confirm("⏰ 着指定日を変更しようとしています。\n\n注文の日付指定: "+o.deliveryDate+"\n変更後の着指定: "+dueOv+"\n\n備考欄・注文の日付指定と違いますが大丈夫ですか？\n（お客様とメッセージ等で合意済みの場合のみOKしてください）")) return;
+    }
   }
   const addr=corpAddr||((o.shipAddr&&/[都道府県市区町村]/.test(o.shipAddr))?o.shipAddr:(o.opMemo||""));
   const shipDate=(document.getElementById("seino-date")?.value||"").trim();  // 発送日（デフォ当日・明日以降に変更可）
   window._seinoShipDate=shipDate;
   const _td=new Date(); const _tds=`${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,"0")}-${String(_td.getDate()).padStart(2,"0")}`;
   const dateNote="\n📅 発送日: "+((shipDate&&shipDate!==_tds)?(shipDate+"（⚠️本日ではありません）"):"本日");
-  if(!confirm("【西濃で送り状発行＋印刷】🟢本番\n\n届け先: "+(corpName||o.customer||"")+"\n〒"+(corpZip||o.shipZip||"?")+" "+(addr||"住所未取得")+(o.custType==="個人"&&o.branch?"\n止め: "+o.branch+"支店（住所は支店に自動変換）":"")+(corpName?"\n（法人・確認済みの届け先で発行）":"")+"\n個口: "+kouguchiTotal(o)+"個口"+dateNote+(o.deliveryDate?("\n⏰ 着指定: "+o.deliveryDate+"（送り状に配達指定で反映）"):"")+"\n\n西濃へ本番の出荷登録をし、会社PCの HL-L2375DW でA5自動印刷します。よろしいですか？")) return;
+  const atena=corpName?((o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":"")+corpAbbrev(corpName)):(o.customer||"");  // 法人=宛名を「楽天(株)◯◯」形式に（加工予定表と照合しやすく）
+  const dueShow=dueOv||o.deliveryDate;
+  if(!confirm("【西濃で送り状発行＋印刷】🟢本番\n\n宛名: "+atena+"\n〒"+(corpZip||o.shipZip||"?")+" "+(addr||"住所未取得")+(o.custType==="個人"&&o.branch?"\n止め: "+o.branch+"支店（住所は支店に自動変換）":"")+"\n個口: "+kouguchiTotal(o)+"個口"+dateNote+(dueShow?("\n⏰ 着指定: "+dueShow+"（送り状に配達指定で反映）"+(dueOv&&dueOv!==o.deliveryDate?" ⚠️変更あり":"")):"")+"\n\n西濃へ本番の出荷登録をし、会社PCの HL-L2375DW でA5自動印刷します。よろしいですか？")) return;
   toast("西濃で発行中…");
   try{
     const u=new URL(API_URL); u.searchParams.set("action","seinoissue"); u.searchParams.set("id",o.id); if(window._seinoShipDate) u.searchParams.set("date",window._seinoShipDate);
-    if(corpName){ u.searchParams.set("name",corpName); u.searchParams.set("zip",corpZip); u.searchParams.set("addr",corpAddr); }  // 法人=確認済みの届け先で発行
+    if(corpName){ u.searchParams.set("name",atena); u.searchParams.set("corp",corpName); u.searchParams.set("zip",corpZip); u.searchParams.set("addr",corpAddr); }  // 宛名=楽天(株)◯◯形式・corp=素の法人名(保存用)
+    if(dueOv&&dueOv!==o.deliveryDate) u.searchParams.set("due",dueOv);  // 着指定の変更（合意済み）
     u.searchParams.set("email",CRED.email); u.searchParams.set("pass",CRED.pass);
     const res=await fetch(u.toString()).then(r=>r.json());
     if(res.ok){
       o.seinoOkurijoNo=res.okurijoNo; toast("✅ 送り状番号 "+res.okurijoNo+" 発行。HL-L2375DWで印刷します（数十秒）");
+      if(corpName){ o.corpName=corpName; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.corpName=corpName; }  // カード名に法人名を併記
       // 発送処理(楽天/ヤフー通知)はここでは行わない＝出荷一覧表「本日出す」一括の流れで実施（本人指示2026-07-23）
       closeDrawer(); loadFromServer();
     }
@@ -1486,12 +1504,18 @@ function openOrderDrawer(id){
       </div>`:""}
       ${o.custType==="法人"?`
       <div style="border:1.5px solid #e6910044;background:#e6910010;border-radius:8px;padding:8px 10px;margin-bottom:8px">
-        <div style="font-size:11.5px;font-weight:800;margin-bottom:6px">🏢 法人の届け先（お客様に確認した内容を入力・注文情報と違う場合があるため必須）</div>
-        <input class="txt" id="seino-corp-name" placeholder="法人名・屋号（例：株式会社◯◯ ◯◯支店）" style="margin-bottom:6px" />
-        <div style="display:flex;gap:6px">
-          <input class="txt" id="seino-corp-zip" placeholder="〒" style="flex:0 0 110px" />
-          <input class="txt" id="seino-corp-addr" placeholder="住所（会社名の記載がある確認済み住所）" style="flex:1" />
+        <div style="font-size:11.5px;font-weight:800;margin-bottom:6px">🏢 法人の届け先（宛名は法人名で印刷されます）</div>
+        <input class="txt" id="seino-corp-name" placeholder="法人名・屋号（必須・例：株式会社◯◯ ◯◯支店）" value="${esc(o.corpName||"")}" style="margin-bottom:6px" />
+        <div style="display:flex;gap:6px;margin-bottom:6px">
+          <input class="txt" id="seino-corp-zip" value="${esc(o.shipZip||"")}" placeholder="〒" style="flex:0 0 110px" />
+          <input class="txt" id="seino-corp-addr" value="${esc(o.shipAddr||"")}" placeholder="住所" style="flex:1" />
         </div>
+        <label style="font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:6px"><input type="checkbox" id="seino-addr-ok"> 届け先住所に間違いがないことを確認した（違う場合は上で修正）</label>
+      </div>`:""}
+      ${o.deliveryDate?`
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+        <span style="font-size:12px;color:#c0392b;font-weight:800;flex:0 0 auto">⏰ 着指定</span>
+        <input class="txt" id="seino-due" type="date" value="${esc(o.deliveryDate)}" style="flex:1" />
       </div>`:""}
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
         <span style="font-size:12px;color:var(--muted);flex:0 0 auto">発送日</span>
