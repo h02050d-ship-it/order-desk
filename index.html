@@ -542,7 +542,10 @@ function apiPost(body){
 }
 
 function saveOrderOverlay(o){
-  if(API_URL){ apiPost({action:"order", id:o.id, status:o.status, memo:o.memo, tracking:o.tracking, customer:o.customer}); return; }
+  if(API_URL){
+    const body={action:"order", id:o.id, status:o.status, memo:o.memo, tracking:o.tracking, customer:o.customer};
+    ["corpName","corpZip","corpAddr","dueOverride"].forEach(k=>{ if(o[k]!==undefined) body[k]=o[k]; });  // 法人届け先・合意着日（欄が無い注文では送らない=消さない）
+    apiPost(body); return; }
   const ov = load(LS.oOverlay, {});
   ov[o.id] = {status:o.status, memo:o.memo, tracking:o.tracking, customer:o.customer};
   save(LS.oOverlay, ov);
@@ -816,7 +819,7 @@ function kakouRowsFor(o){
     const grade=kakouGradeOf(p.fushi,p.grade);
     const rem=[];  // 西濃/佐川は配送列に入れるので備考には書かない
     if(o.custType==="個人"&&carrier==="西濃") rem.push((o.branch||"")+"支店止め");  // 支店止めは西濃のみ（佐川個人は宅配）
-    if(o.deliveryDate) rem.push(o.deliveryDate.slice(5).replace("-","/")+"着指定");
+    const _effDue=o.dueOverride||o.deliveryDate; if(_effDue) rem.push(String(_effDue).slice(5).replace("-","/")+"着指定");  // 合意した着指定日を優先
     if(p.grade==="B" && !/^B/.test(grade)) rem.push("B級品");
     const pre=o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":o.mall==="ichiba"?"":"ネット";  // 名前プレフィックス(様なし)
     const sur=o.mall==="ichiba"?String(o.customer||"").trim():kakouSur(o.customer);  // 市場は社名そのまま・ECは姓/法人名主要部
@@ -1360,7 +1363,7 @@ function orderCard(o){
       ${o.mall!=="ichiba"?'<span class="pill">🚚 '+esc(shipCarrier(o))+'</span>':''}
       ${o.status==="shipped"?'<span class="pill ship-wait">📦 引渡し未完了</span>':''}
       ${o.remarks?'<span class="pill memo memo-on" title="備考: '+esc(o.remarks)+'">📝 備考あり</span>':''}
-      ${o.deliveryDate?'<span class="pill date-spec">⏰ '+esc(o.deliveryDate)+' 着指定</span>':''}
+      ${(o.dueOverride||o.deliveryDate)?'<span class="pill date-spec">⏰ '+esc(o.dueOverride||o.deliveryDate)+' 着指定'+((o.dueOverride&&o.dueOverride!==o.deliveryDate)?'(変更)':'')+'</span>':''}
       ${o.mall==="ichiba"?(('<span class="pill '+(o.docType==="注文"?"doc-order":o.docType==="見積り"?"doc-quote":"doc-check")+'">'+(o.docType==="注文"?"📝 注文":o.docType==="見積り"?"💰 見積り":o.docType==="対象外"?"🚫 対象外":"❓ 要確認")+'</span>')+('<span class="pill">'+(o.src==="mail"?"📧 メール":"📠 FAX")+'</span>')):""}
       ${(o.mall!=="ichiba"&&o.status==="new")?workflowPillHTML(o):""}
       ${o.hasMsg?'<span class="pill msg">💬 問い合わせ</span>':''}
@@ -1531,15 +1534,15 @@ function openOrderDrawer(id){
         <div style="font-size:11.5px;font-weight:800;margin-bottom:6px">🏢 法人の届け先（宛名は法人名で印刷されます）</div>
         <input class="txt" id="seino-corp-name" placeholder="法人名・屋号（必須・例：株式会社◯◯ ◯◯支店）" value="${esc(o.corpName||"")}" style="margin-bottom:6px" />
         <div style="display:flex;gap:6px;margin-bottom:6px">
-          <input class="txt" id="seino-corp-zip" value="${esc(o.shipZip||"")}" placeholder="〒" style="flex:0 0 110px" />
-          <input class="txt" id="seino-corp-addr" value="${esc(o.shipAddr||"")}" placeholder="住所" style="flex:1" />
+          <input class="txt" id="seino-corp-zip" value="${esc(o.corpZip||o.shipZip||"")}" placeholder="〒" style="flex:0 0 110px" />
+          <input class="txt" id="seino-corp-addr" value="${esc(o.corpAddr||o.shipAddr||"")}" placeholder="住所" style="flex:1" />
         </div>
         <label style="font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:6px"><input type="checkbox" id="seino-addr-ok"> 届け先住所に間違いがないことを確認した（違う場合は上で修正）</label>
       </div>`:""}
       ${o.deliveryDate?`
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
         <span style="font-size:12px;color:#c0392b;font-weight:800;flex:0 0 auto">⏰ 着指定</span>
-        <input class="txt" id="seino-due" type="date" value="${esc(o.deliveryDate)}" style="flex:1" />
+        <input class="txt" id="seino-due" type="date" value="${esc(o.dueOverride||o.deliveryDate)}" style="flex:1" />${(o.dueOverride&&o.dueOverride!==o.deliveryDate)?`<span style="font-size:11px;color:#c0392b;font-weight:700;flex:0 0 auto">変更済(注文は${esc(o.deliveryDate)})</span>`:""}
       </div>`:""}
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
         <span style="font-size:12px;color:var(--muted);flex:0 0 auto">発送日</span>
@@ -1603,6 +1606,12 @@ function saveOrderFromDrawer(){
   const trackEl=$("#o-track"); if(trackEl) o.tracking = trackEl.value.trim(); // 楽天は下の書き戻し欄が担当（上は非表示）
   o.memo = $("#o-memo").value.trim();
   o.customer = $("#o-cust").value.trim();
+  const _g=id=>document.getElementById(id);
+  if(_g("seino-corp-name")) o.corpName=_g("seino-corp-name").value.trim();
+  if(_g("seino-corp-zip"))  o.corpZip=_g("seino-corp-zip").value.trim();
+  if(_g("seino-corp-addr")) o.corpAddr=_g("seino-corp-addr").value.trim();
+  if(_g("seino-due"))       o.dueOverride=_g("seino-due").value.trim();
+  window._drawerSnap=null;  // 保存済み→閉じる時の未保存確認を出さない
   saveOrderOverlay(o);
   closeDrawer(); render(); toast("保存しました");
 }
