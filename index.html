@@ -984,7 +984,7 @@ async function seinoIssueFromDrawer(){
   let dueOv="";
   if(o.deliveryDate){
     dueOv=(document.getElementById("seino-due")?.value||"").trim();
-    if(dueOv && dueOv!==o.deliveryDate){
+    if(dueOv && dueOv!==o.deliveryDate && dueOv!==o.dueOverride){  // 保存済みの合意日はポップアップ不要
       if(!confirm("⏰ 着指定日を変更しようとしています。\n\n注文の日付指定: "+o.deliveryDate+"\n変更後の着指定: "+dueOv+"\n\n備考欄・注文の日付指定と違いますが大丈夫ですか？\n（お客様とメッセージ等で合意済みの場合のみOKしてください）")) return;
     }
   }
@@ -1075,6 +1075,7 @@ async function openKakouEditor(o,opt){
   const rows=base.length?base.map(r=>Object.assign({},r)):_kakouPrefillRows_(o);
   state._kakouEd={id:o.id, advance:!!opt.advance, actual:(base[0]&&base[0].actual)||"-", rows:rows};
   state.drawer={type:"kakou", id:o.id};
+  window._drawerSnap=null;  // エディタは未保存確認の対象外
   $("#drawer").style.width="min(96vw, 1080px)"; // 予定表と同じ横一列表示のため広げる（閉じると元に戻る）
   $("#d-head").innerHTML=`<h3>🪵 この内容で加工予定表に追加していいですか？</h3><button class="d-close" onclick="closeDrawer()">✕</button>`;
   _kakouEdBody_();
@@ -1575,6 +1576,7 @@ function openOrderDrawer(id){
     b.onclick=()=>{ $("#o-status").querySelectorAll("button").forEach(x=>x.classList.remove("active")); b.classList.add("active"); };
   });
   openDrawer();
+  window._drawerSnap=_drawerValues_();  // 未保存検知の基準値
   autoPrepareMail(o);   // 対象注文なら開いた瞬間に送料計算＋配送確認メール文面を自動用意（確認して送信だけの状態に）
   maybeRemarkPopup(o);  // 備考の見落とし防止ポップアップ
 }
@@ -1886,7 +1888,19 @@ function resetTemplates(){ state.templates=JSON.parse(JSON.stringify(DEFAULT_TEM
    Drawer open/close
 ========================================================= */
 function openDrawer(){ $("#scrim").classList.add("on"); $("#drawer").classList.add("on"); }
-function closeDrawer(){ $("#scrim").classList.remove("on"); $("#drawer").classList.remove("on"); $("#drawer").style.width=""; state.drawer=null; }
+// ドロワーの編集値スナップショット（未保存検知用）
+function _drawerValues_(){
+  const g=id=>document.getElementById(id);
+  return JSON.stringify({c:g("o-cust")?.value||"", m:g("o-memo")?.value||"", t:g("o-track")?.value||"",
+    s:document.querySelector("#o-status button.active")?.dataset.s||"",
+    cn:g("seino-corp-name")?.value||"", cz:g("seino-corp-zip")?.value||"", ca:g("seino-corp-addr")?.value||"", d:g("seino-due")?.value||""});
+}
+function closeDrawer(){
+  if(state.drawer&&state.drawer.type==="order"&&window._drawerSnap&&_drawerValues_()!==window._drawerSnap){
+    if(confirm("✏️ 変更が保存されていません。保存しますか？")){ saveOrderFromDrawer(); return; }  // 修正があった場合だけ確認
+  }
+  window._drawerSnap=null;
+  $("#scrim").classList.remove("on"); $("#drawer").classList.remove("on"); $("#drawer").style.width=""; state.drawer=null; }
 
 /* =========================================================
    Render dispatcher
