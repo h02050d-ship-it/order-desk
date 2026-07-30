@@ -753,13 +753,14 @@ function needsShipConfirm(o){ return shipCarrier(o)==="西濃"; }
 // 加工準備：支払確認(楽天=API/ヤフー=当面手動扱い)＋配送確認(西濃のみ手動チェック)が揃えば加工OK
 // 判断軸: 出荷準備中以降に進んだ時点で「配送確認・メール送信」は済んでいる扱い（新規受注でのみ未確認がありうる）
 function isPaidOk(o){ return (o.mall==="rakuten"||o.mall==="yahoo") ? !!o.paid : true; } // 楽天・ヤフーともAPIで入金状態を把握
-function effShipConfirmed(o){ return !!o.shipConfirmed || o.status!=="new"; }
+function rkPreConfirm(o){ return o.mall==="rakuten" && (Number(o.progress)||100)<=100; } // 楽天prog100=注文確定(受注確定)ボタン前。銀行振込はstatusがnewのまま600(入金待ち)に進むためstatusでなくprogressで判定
+function effShipConfirmed(o){ return !!o.shipConfirmed || o.status!=="new" || (o.mall==="rakuten" && !rkPreConfirm(o)); }
 function kakouReady(o){ return isPaidOk(o) && (!needsShipConfirm(o) || effShipConfirmed(o)); }
 // 注文フロー（配送確認 → 注文確定 → 支払い）の「一番直近でやる1ステップ」だけを返す。全部済み＝null（＝加工OK）。
-// 楽天は status=new の間が「注文確定(受注確定)待ち」。西濃2mのみ配送確認が要る。支払い＝入金(楽天API/ヤフー)。
+// 楽天は progress100 の間が「注文確定(受注確定)待ち」→確定ボタンで支払確認へ。西濃2mのみ配送確認が要る。支払い＝入金(楽天API/ヤフー)。
 function nextStep(o){
   if(needsShipConfirm(o) && !effShipConfirmed(o)) return {k:"ship",   label:"配送確認"};
-  if(o.mall==="rakuten" && o.status==="new")      return {k:"confirm",label:"注文確定"};
+  if(rkPreConfirm(o))                              return {k:"confirm",label:"注文確定"};
   if(!isPaidOk(o))                                 return {k:"pay",    label:"支払確認"};
   return null;
 }
@@ -1502,7 +1503,7 @@ function openOrderDrawer(id){
       :needsShipConfirm(o)?`<div class="prep-line"><span>🚚 配送</span><span class="done">✅ 確認済</span></div>`
       :`<div class="prep-line"><span>🚚 配送</span><span class="done">✅ ${esc(shipCarrier(o))}（確認不要）</span></div>`}
       <div class="prep-result">${kakouReady(o)?'✅ <b>加工OK</b>':(needsShipConfirm(o)?'⏳ 支払・配送確認で加工OK':'⏳ 入金確認で加工OK')}</div>
-      ${kakouRowsFor(o).length?`<div class="prep-line" style="margin:8px 0 0"><span>🪵 加工予定表</span><span class="${o.kakouAdded?'done':'wait'}">${o.kakouAdded?`✅ 登録済み${kakouReady(o)?'':'（実際欄に'+(!isPaidOk(o)?'支払確認':'配送確認')+'表示中）'}（<a href="${KAKOU_URL}" target="_blank" style="color:inherit">開く↗</a>）`:'⏳ まもなく自動登録（注文段階で登録）'}</span></div>
+      ${kakouRowsFor(o).length?`<div class="prep-line" style="margin:8px 0 0"><span>🪵 加工予定表</span><span class="${o.kakouAdded?'done':'wait'}">${o.kakouAdded?`✅ 登録済み${kakouReady(o)?'':'（実際欄に'+((nextStep(o)||{}).label||'-')+'表示中）'}（<a href="${KAKOU_URL}" target="_blank" style="color:inherit">開く↗</a>）`:'⏳ まもなく自動登録（注文段階で登録）'}</span></div>
       ${!o.kakouAdded?`<button class="btn ghost" style="margin-top:7px;width:100%" onclick="kakouRegisterNow()">🪵 加工予定表に今すぐ登録（${kakouRowsFor(o).length}行）</button>`:''}`:''}
     </div>`}
     ${(o.mall!=="ichiba"&&needsFreight(o))?`<div class="sec-t">運賃・営業所</div>
