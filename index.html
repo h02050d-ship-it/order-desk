@@ -544,7 +544,7 @@ function apiPost(body){
 function saveOrderOverlay(o){
   if(API_URL){
     const body={action:"order", id:o.id, status:o.status, memo:o.memo, tracking:o.tracking, customer:o.customer};
-    ["corpName","corpZip","corpAddr","dueOverride"].forEach(k=>{ if(o[k]!==undefined) body[k]=o[k]; });  // 法人届け先・合意着日（欄が無い注文では送らない=消さない）
+    ["corpName","corpZip","corpAddr","dueOverride","shipDate"].forEach(k=>{ if(o[k]!==undefined) body[k]=o[k]; });  // 法人届け先・合意着日・発送日（欄が無い注文では送らない=消さない）
     apiPost(body); return; }
   const ov = load(LS.oOverlay, {});
   ov[o.id] = {status:o.status, memo:o.memo, tracking:o.tracking, customer:o.customer};
@@ -823,7 +823,8 @@ function kakouRowsFor(o){
     const _effDue=o.dueOverride||o.deliveryDate; if(_effDue) rem.push(String(_effDue).slice(5).replace("-","/")+"着指定");  // 合意した着指定日を優先
     if(p.grade==="B" && !/^B/.test(grade)) rem.push("B級品");
     const pre=o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":o.mall==="ichiba"?"":"ネット";  // 名前プレフィックス(様なし)
-    const sur=o.mall==="ichiba"?String(o.customer||"").trim():kakouSur(o.customer);  // 市場は社名そのまま・ECは姓/法人名主要部
+    // 法人名を確認済みなら「楽天(株)◯◯」形式（送り状宛名と同一表記・スペース除去）。未確認は姓/社名主要部
+    const sur=o.mall==="ichiba"?String(o.customer||"").trim():(o.corpName?corpAbbrev(o.corpName).replace(/[ 　]+/g,""):kakouSur(o.customer));
     const carVal=carrier==="西濃"?"西濃":"";  // 配送列（加工予定表は西濃/内藤中心。佐川宅配は空）
     const danballVal=(carVal==="西濃"||/無節|特上小/.test(grade))?"有":"無";  // 西濃必須 or 特上小/無節のみ段ボール（丸節等は無）
     const uid=("od_"+String(o.id||o.orderNo)+"_"+idx).replace(/[.#$/\[\]:]/g,"_");
@@ -837,6 +838,7 @@ function kakouRowsFor(o){
     if(/両端直角カット/.test(opt)) row.ryoutan="1";
     if(/塗装/.test(opt)) row.tosou="1";
     if(/^B/.test(grade)) row.zaiko="1"; // B級=加工在庫（加工予定表側の自動チェックと同じ）
+    if(o.shipDate) row.due=String(o.shipDate).slice(0,10);  // 発送日→加工予定表の納期列（ISO）
     rows.push(row);
   });
   return rows;
@@ -939,6 +941,27 @@ async function kakouUpdateStatus_(o){
       const snap=await kakouDb.ref("items/"+r._uid).once("value"); const ex=snap.val(); if(!ex) continue;
       const a=ex.actual;
       if((a==="配送確認"||a==="注文確定"||a==="支払確認"||a==="-"||a===""||a==null) && a!==r.actual){ await kakouDb.ref("items/"+r._uid+"/actual").set(r.actual); }
+    }catch(e){}
+  }
+}
+// ドロワー保存時: 法人名(取引先)・発送日(納期)・着日(備考の着指定)を加工予定表の既存行へ即反映。
+// 備考は「MM/DD着指定」の部分だけ書き換え、スタッフの追記(送り状FAX等)は温存する
+async function kakouApplyOrderInfo(o){
+  if(!kakouDb || !kakouAuthed) return;
+  const dueTok=(o.dueOverride||o.deliveryDate)?String(o.dueOverride||o.deliveryDate).slice(5,10).replace("-","/")+"着指定":"";
+  for(const r of kakouRowsFor(o)){
+    try{
+      const snap=await kakouDb.ref("items/"+r._uid).once("value"); const ex=snap.val();
+      if(!ex || ex.archived==="1") continue;
+      const upd={};
+      if(r.customer && ex.customer!==r.customer) upd.customer=r.customer;                      // 法人名確認済→「楽天(株)◯◯」
+      if(r.due && ex.due!==r.due) upd.due=r.due;                                               // 発送日→納期
+      if(dueTok){
+        const rm=String(ex.remark||"");
+        const nrm=/\d{1,2}\/\d{1,2}着指定/.test(rm) ? rm.replace(/\d{1,2}\/\d{1,2}着指定/g,dueTok) : (rm?rm+" "+dueTok:dueTok);
+        if(nrm!==rm) upd.remark=nrm;
+      }
+      if(Object.keys(upd).length) await kakouDb.ref("items/"+r._uid).update(upd);
     }catch(e){}
   }
 }
@@ -1547,7 +1570,7 @@ function openOrderDrawer(id){
       </div>`:""}
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
         <span style="font-size:12px;color:var(--muted);flex:0 0 auto">発送日</span>
-        <input class="txt" id="seino-date" type="date" value="${today}" min="${today}" style="flex:1" />
+        <input class="txt" id="seino-date" type="date" value="${esc(o.shipDate||today)}" min="${today}" style="flex:1" />
       </div>
       <button class="btn primary" style="width:100%" onclick="seinoIssueFromDrawer()">🚚 西濃で送り状発行＋印刷（${kouguchiTotal(o)}個口）</button>
       <div style="font-size:11px;color:var(--muted);margin-top:6px">🟢 本番・会社PCでA5自動印刷。訂正は右上「KM2」から。明日以降の発送は発送日を変えて発行。</div>
@@ -1612,8 +1635,10 @@ function saveOrderFromDrawer(){
   if(_g("seino-corp-zip"))  o.corpZip=_g("seino-corp-zip").value.trim();
   if(_g("seino-corp-addr")) o.corpAddr=_g("seino-corp-addr").value.trim();
   if(_g("seino-due"))       o.dueOverride=_g("seino-due").value.trim();
+  if(_g("seino-date"))      o.shipDate=_g("seino-date").value.trim();  // 発送日（加工予定表の納期に反映）
   window._drawerSnap=null;  // 保存済み→閉じる時の未保存確認を出さない
   saveOrderOverlay(o);
+  kakouApplyOrderInfo(o);  // 法人名・発送日・着日を加工予定表の既存行へ即反映
   closeDrawer(); render(); toast("保存しました");
 }
 
