@@ -820,6 +820,7 @@ function kakouRowsFor(o){
     const grade=kakouGradeOf(p.fushi,p.grade);
     const rem=[];  // 西濃/佐川は配送列に入れるので備考には書かない
     if(o.custType==="個人"&&carrier==="西濃") rem.push((o.branch||"")+"支店止め");  // 支店止めは西濃のみ（佐川個人は宅配）
+    if(/納品書/.test(String(o.remarks||""))) rem.push("納品書同梱");  // ヤフーNeedDetailedSlip→備考経由(2026-07-31)
     const _effDue=o.dueOverride||o.deliveryDate; if(_effDue) rem.push(String(_effDue).slice(5).replace("-","/")+"着指定");  // 合意した着指定日を優先
     if(p.grade==="B" && !/^B/.test(grade)) rem.push("B級品");
     const pre=o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":o.mall==="ichiba"?"":"ネット";  // 名前プレフィックス(様なし)
