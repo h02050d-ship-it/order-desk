@@ -1467,7 +1467,7 @@ function openOrderDrawer(id){
   const carOpts=Object.keys(carName).map(c=>`<option value="${c}" ${c===defCar?"selected":""}>${carName[c]}</option>`).join("");
   const rkWriteback = o.mall!=="rakuten" ? "" : `
     <div class="sec-t">楽天への書き戻し（API）</div>
-    ${o.opMemo?`<div class="opmemo-box" style="margin-bottom:10px"><b>📋 楽天 対応者メモ</b>\n${esc(o.opMemo)}</div>`:""}
+    ${o.opMemo?`<div class="opmemo-box" style="margin-bottom:10px"><b>📋 ${o.mall==="yahoo"?"ヤフー ストア内メモ":"楽天 対応者メモ"}</b>\n${esc(o.opMemo)}</div>`:""}
     ${needsFreight(o)?`<div class="rk-warn">⚠️ <b>2m以上の商品</b>です。<b>運賃見積り→お客様へメール→了承メール→楽天で送料追加</b>が済んでから受注確定してください（1m・佐川は送料自動なのでそのまま確定OK）。</div>`:""}
     ${o.status==="new"?`<button class="btn ghost sm" onclick="rakutenConfirmFromDrawer()" style="margin-bottom:10px">🟢 楽天で受注確定する</button>`:""}
     <div style="display:flex;gap:8px">
