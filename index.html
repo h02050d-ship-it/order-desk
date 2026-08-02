@@ -885,7 +885,10 @@ function kakouDupOf_(row, existing){
 async function kakouWrite_(o){
   const all=kakouRowsFor(o);
   const existing=await kakouExisting_();
-  const rows=all.filter(r=>!kakouDupOf_(r,existing));
+  // 既に同じod_行がFirebaseにあれば上書きしない（現場の実際=数値・確認済み・並び等の編集を保護。
+  // kakouAddedフラグが飛んで再登録が走っても初期値「配送確認」に巻き戻さない）
+  const exUid=new Set(existing.map(e=>String(e._uid||"")));
+  const rows=all.filter(r=>!exUid.has(String(r._uid)) && !kakouDupOf_(r,existing));
   const skipped=all.length-rows.length;
   for(const r of rows){ await kakouDb.ref("items/"+r._uid).set(r); }
   o.kakouAdded=true;
