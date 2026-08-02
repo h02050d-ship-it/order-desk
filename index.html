@@ -1221,7 +1221,20 @@ function wrapConfirmMail(o, core){
   return MAIL_HEADER+"\n\n"+(name?name+"\n":"")+core+"\n\n\n"+MAIL_SIGNATURE;
 }
 // 楽天2m案件の配送確認メール文面を生成（個人=支店止めテンプレ/法人=1〜5確認テンプレ）。コピーのみ・送信はしない
-function genConfirmMail(){
+// 西濃の支店住所をGASの営業所マスタから取得（運賃ツールの営業所検索が間に合わない時の確実な補完）
+async function seinoBranchAddr(branch){
+  const b=String(branch||"").replace(/営業所$|支店$/,""); if(!b) return "";
+  window._brAddrCache=window._brAddrCache||{};
+  if(window._brAddrCache[b]!==undefined) return window._brAddrCache[b];
+  try{
+    const u=new URL(API_URL); u.searchParams.set("action","seinoaddr"); u.searchParams.set("branch",b);
+    u.searchParams.set("email",CRED.email); u.searchParams.set("pass",CRED.pass);
+    const r=await fetch(u.toString()).then(x=>x.json());
+    const a=(r&&r.ok&&r.addr)?("〒"+String(r.zip||"").replace(/^(\d{3})(\d{4})$/,"$1-$2")+" "+r.addr):"";
+    window._brAddrCache[b]=a; return a;
+  }catch(e){ return ""; }
+}
+async function genConfirmMail(){
   const o=getOrder(state.drawer.id); if(!o) return;
   const f=(window._fareLast&&window._fareLast.id===o.id)?window._fareLast:null;
   if(!f){
@@ -1237,11 +1250,14 @@ function genConfirmMail(){
   }
   // f はあり: total があれば記入、無ければ（北海道/沖縄/離島＝別途見積り）空欄で生成し手入力を促す
   const total=(f&&f.total)?f.total:"";
-  const itemsTxt=(o.items||[]).map(it=>"・"+cleanItem(it.name)+" ×"+it.qty).join("\n");
+  const itemsTxt=(o.items||[]).map(it=>"・"+cleanItem(it.name)+(it.opt?"（"+String(it.opt).replace(/\s*\/\s*/g,"・")+"）":"")+" ×"+it.qty).join("\n");  // オプション(カット/塗装/厚さ等)も記載
   let body="";
   if(o.custType==="個人"){
     const br=String((f&&f.officeName)||o.branch||"").replace(/営業所$|支店$/,"");
-    body="（株）林材木店と申します。\nこの度はご注文ありがとうございます。\n\n配送についてご確認したい点がございます。\n\n配送方法で西濃運輸個人様利用（宅配不可支店止め）をお選びいただいております。\n配送先の支店は西濃運輸　"+br+"支店を予定しております。\n住所："+((f&&f.officeAddr)||"")+"\n送料："+total+"（税込み）\n\n上記の支店と送料で問題ないかご返信をお願い致します。\n送料と支店に問題がなければ、下記注文内容で生産発送をさせていただきます。\n\nお手数ですが、ご返信宜しくお願い致します。\n\n【ご注文内容】\n"+itemsTxt;
+    let offAddr=(f&&f.officeAddr)||"";
+    if(!offAddr && br) offAddr=await seinoBranchAddr(br);   // 営業所検索が間に合わない時はマスタから補完（住所欄の空送信を防ぐ）
+    if(!offAddr && br) toast("⚠️ "+br+"支店の住所を取得できませんでした。文面の住所欄を手入力してください");
+    body="（株）林材木店と申します。\nこの度はご注文ありがとうございます。\n\n配送についてご確認したい点がございます。\n\n配送方法で西濃運輸個人様利用（宅配不可支店止め）をお選びいただいております。\n配送先の支店は西濃運輸　"+br+"支店を予定しております。\n住所："+offAddr+"\n送料："+total+"（税込み）\n\n上記の支店と送料で問題ないかご返信をお願い致します。\n送料と支店に問題がなければ、下記注文内容で生産発送をさせていただきます。\n\nお手数ですが、ご返信宜しくお願い致します。\n\n【ご注文内容】\n"+itemsTxt;
   } else {
     // 法人名の抽出（届け先住所に会社名が入っている場合→2番に記載・3番に住所。なければ空白）
     const corp=(String(o.shipAddr||"").match(/(株式会社|有限会社|合同会社|合資会社|（株）|（有）|\(株\)|\(有\))\S*|\S*(工務店|建設|建築|商店|木材店?|製材所?|組合|工業|工房|ｾﾝﾀｰ|センター)/)||[])[0]||"";
