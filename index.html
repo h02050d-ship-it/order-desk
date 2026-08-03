@@ -1024,7 +1024,7 @@ async function seinoIssueFromDrawer(){
   window._seinoShipDate=shipDate;
   const _td=new Date(); const _tds=`${_td.getFullYear()}-${String(_td.getMonth()+1).padStart(2,"0")}-${String(_td.getDate()).padStart(2,"0")}`;
   const dateNote="\n📅 発送日: "+((shipDate&&shipDate!==_tds)?(shipDate+"（⚠️本日ではありません）"):"本日");
-  const atena=corpName?((o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":"")+corpAbbrev(corpName)):(o.customer||"");  // 法人=宛名を「楽天(株)◯◯」形式に（加工予定表と照合しやすく）
+  const atena=corpName?corpAbbrev(corpName):(o.customer||"");  // 送り状は正式な宛名＝モール接頭辞は付けない（楽天/ヤフの接頭辞は加工予定表だけの社内表記）
   const dueShow=dueOv||o.deliveryDate;
   if(!confirm("【西濃で送り状発行＋印刷】🟢本番\n\n宛名: "+atena+"\n〒"+(corpZip||o.shipZip||"?")+" "+(addr||"住所未取得")+(o.custType==="個人"&&o.branch?"\n止め: "+o.branch+"支店（住所は支店に自動変換）":"")+"\n個口: "+kouguchiTotal(o)+"個口"+dateNote+(dueShow?("\n⏰ 着指定: "+dueShow+"（送り状に配達指定で反映）"+(dueOv&&dueOv!==o.deliveryDate?" ⚠️変更あり":"")):"")+"\n\n西濃へ本番の出荷登録をし、会社PCの HL-L2375DW でA5自動印刷します。よろしいですか？")) return;
   toast("西濃で発行中…");
