@@ -1074,9 +1074,10 @@ function _kakouBlankRow_(o){
   const pre=o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":o.mall==="ichiba"?"":"ネット";
   const sur=o.mall==="ichiba"?String(o.customer||"").trim():kakouSur(o.customer);
   const car=shipCarrier(o);
-  const carrier=o.mall==="ichiba" ? "" : (car==="西濃"?"西濃":""); // 市場は既定なし・ECは西濃のみ（佐川は加工予定表の配送欄では扱わない）
+  // 市場は既定なし。ただしナイス沼津は浜松市場へ自社搬入が定型のため「自社」を既定に
+  const carrier=o.mall==="ichiba" ? (/ナイス\s*沼津|沼津木材/.test(String(o.customer||""))?"自社":"") : (car==="西濃"?"西濃":"");
   const row={customer:pre+sur, carrier:carrier, hinmei:"F", grade:"-",
-    thickness:"", width:"120", length:"", qty:"", planned:"1", seal:"無", danball:"無", remark:""};
+    thickness:"", width:"120", length:"", qty:"", planned:"1", seal:"無", danball:"無", due:"", remark:""};
   const sd=_kakouAutoSD_(row); row.seal=sd.seal; row.danball=sd.danball;
   return row;
 }
@@ -1093,7 +1094,8 @@ function _kakouPrefillRows_(o){
     const bund=Number(it.qty)||1;
     b.planned=String(bund);                 // 束数＝予定(個口)に仮置き
     b.qty=_kakouLen2Nyusu_(d[2]);           // 入数の目安（2m8/3m10/4m8）
-    if(o.mall==="ichiba" && bund>=20) b.carrier="内藤";  // 数量20以上は内藤を既定
+    if(o.mall==="ichiba" && bund>=20 && !b.carrier) b.carrier="内藤";  // 数量20以上は内藤を既定（自社等の既定があれば尊重）
+    b.due=o.dueOverride||o.deliveryDate||"";  // 納期＝着指定日があれば初期表示
     const sd=_kakouAutoSD_(b); b.seal=sd.seal; b.danball=sd.danball;
     out.push(b);
   });
@@ -1130,6 +1132,7 @@ function _kakouEdBody_(){
       <td><input type="checkbox" data-k="ryoutan" ${r.ryoutan==="1"?"checked":""}></td>
       <td><input type="checkbox" data-k="tosou" ${r.tosou==="1"?"checked":""}></td>
       <td><input type="checkbox" data-k="zaiko" ${r.zaiko==="1"?"checked":""}></td>
+      <td><input class="txt" data-k="due" type="date" value="${esc(r.due||"")}" style="width:132px" /></td>
       <td><input class="txt" data-k="remark" value="${esc(r.remark||"")}" style="width:150px;text-align:left" placeholder="支店止め・着指定など" /></td>
       <td style="white-space:nowrap"><button class="btn ghost sm" title="この行をコピー（1山の上限で分ける時など）" onclick="kakouEdCopyRow(${i})">📋</button>${ed.rows.length>1?`<button class="btn ghost sm" onclick="kakouEdDelRow(${i})">🗑</button>`:""}</td>
     </tr>`).join("");
@@ -1140,11 +1143,11 @@ function _kakouEdBody_(){
       <input class="txt" id="ked-cust" value="${esc(ed.rows[0].customer||"")}" style="flex:1" />
     </div>
     <div class="ked-wrap"><table class="ked-t">
-      <thead><tr><th>配送</th><th>品名</th><th>等級</th><th>厚さ</th><th>幅</th><th>長さ</th><th>入数</th><th>予定</th><th>シール</th><th>段ボ</th><th>両端</th><th>塗装</th><th>加在</th><th>備考</th><th>複製/削除</th></tr></thead>
+      <thead><tr><th>配送</th><th>品名</th><th>等級</th><th>厚さ</th><th>幅</th><th>長さ</th><th>入数</th><th>予定</th><th>シール</th><th>段ボ</th><th>両端</th><th>塗装</th><th>加在</th><th>納期</th><th>備考</th><th>複製/削除</th></tr></thead>
       <tbody>${trs}</tbody>
     </table></div>
     <button class="btn ghost" style="width:100%" onclick="kakouEdAddRow()">＋ 行を追加</button>
-    <div style="font-size:11px;color:var(--muted);margin-top:6px">※加工予定表と同じ並び（配送/品名/等級/厚さ/幅/長さ/入数/予定/シール/段ボ/両端/塗装/加在/備考）。横にスクロールできます。</div>`;
+    <div style="font-size:11px;color:var(--muted);margin-top:6px">※加工予定表と同じ並び（配送/品名/等級/厚さ/幅/長さ/入数/予定/シール/段ボ/両端/塗装/加在/納期/備考）。横にスクロールできます。</div>`;
 }
 function _kakouEdCollect_(){
   const ed=state._kakouEd;
@@ -1177,7 +1180,7 @@ async function kakouEdSubmit(){
       customer:r.customer, carrier:r.carrier||"", hinmei:r.hinmei, grade:r.grade,
       thickness:r.thickness, width:r.width, length:r.length,
       qty:String(r.qty), planned:String(r.planned||"1"), actual:ed.actual,
-      seal:r.seal||"無", danball:r.danball||"無", remark:r.remark||"", humanchk:"1"};  // エディタ経由=人が確認して追加→確認済み
+      seal:r.seal||"無", danball:r.danball||"無", due:r.due||"", remark:r.remark||"", humanchk:"1"};  // エディタ経由=人が確認して追加→確認済み
     if(r.ryoutan==="1") row.ryoutan="1";
     if(r.tosou==="1") row.tosou="1";
     if(r.zaiko==="1") row.zaiko="1";
