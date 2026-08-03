@@ -1380,7 +1380,7 @@ function renderOrders(){
     if(!cards.length){ c.insertAdjacentHTML("beforeend",`<div class="col-empty">—</div>`); }
     cards.forEach((o)=>{
       const el=orderCard(o);
-      if(col.k==="done" && !isIchiba) el.classList.add("done-card"); // 完了は一律で薄く（CSS）
+      if(col.k==="done" || (isIchiba && col.k==="preparing")) el.classList.add("done-card"); // 完了・市場の入力済みは薄く（CSS）
       c.appendChild(el);
     });
     board.appendChild(c);
