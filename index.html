@@ -393,7 +393,7 @@ const O_STATUS = [
 const O_NEXT = {new:"preparing", preparing:"shipped", shipped:"done", done:null};
 const O_NEXT_LABEL = {new:"▶ 出荷準備へ", preparing:"▶ 出荷済へ", shipped:"▶ 完了へ"};
 // 市場は加工予定表と同じ流れ（登録→製造中、予定表の製造完了→製造完了、出荷完了→出荷完了）
-const ICHIBA_LABEL = {new:"新規注文", preparing:"予定表 登録済み", shipped:"製造完了", done:"予定表へ渡し済み"};  // 市場の受注製造管理は加工予定表で完結→ボードは取込・登録までの管理
+const ICHIBA_LABEL = {new:"加工予定表 入力前", preparing:"加工予定表 入力済み", shipped:"入力済み", done:"入力済み"};  // 市場は2列運用  // 市場の受注製造管理は加工予定表で完結→ボードは取込・登録までの管理
 const ICHIBA_NEXT_LABEL = {new:"", preparing:"", shipped:""};  // 市場は「加工予定表に追加」で完結（製造/出荷の進行は予定表側で管理）
 const stLabel=(o,k)=> (o&&o.mall==="ichiba"?ICHIBA_LABEL[k]:(O_STATUS.find(s=>s.k===k)||{}).label)||k;
 const Q_STATUS = [
@@ -1362,14 +1362,17 @@ function renderOrders(){
   const root = $("#view-orders");
   const list = state.orders.filter(matchFilter);
   const board = document.createElement("div"); board.className="board";
-  O_STATUS.forEach(col=>{
-    let cards = list.filter(o=>o.status===col.k);
-    if(col.k==="done") cards.sort((a,b)=> (b.date||"").localeCompare(a.date||"")); // 注文日の新しい順（新しい注文が上）
+  const isIchiba=(state.tab==="ichiba");
+  const cols = isIchiba ? O_STATUS.filter(c=>c.k==="new"||c.k==="preparing") : O_STATUS;  // 市場は「予定表 入力前／済み」の2列だけ
+  cols.forEach(col=>{
+    // 市場: new以外(製造完了/出荷完了で残っている旧データ含む)は全て「登録済み」列にまとめる
+    let cards = list.filter(o=> isIchiba ? (col.k==="new" ? o.status==="new" : o.status!=="new") : o.status===col.k);
+    if(col.k==="done"||(isIchiba&&col.k==="preparing")) cards.sort((a,b)=> (b.date||"").localeCompare(a.date||"")); // 注文日の新しい順（新しい注文が上）
     else cards.sort((a,b)=> (a.date||"").localeCompare(b.date||"")); // 新規〜出荷済は古い順（古い注文が上＝先に処理）
     const c=document.createElement("div"); c.className="col";
     const isIchibaTab=(state.tab==="ichiba");
     const colNote=(state.tab==="mitsumori")?({new:"⏳ 未対応", done:"✅ 回答済み"}[col.k]||"")
-      :isIchibaTab?({new:"⏳ 予定表 登録前", preparing:"🪵 以降は加工予定表で管理", shipped:"🪵 予定表と連動", done:"🪵 予定表で管理中"}[col.k]||"")
+      :isIchibaTab?({new:"⏳ 入力前", preparing:"🪵 以降は加工予定表で管理"}[col.k]||"")
       :({new:"⏳ 配送・支払確認中", preparing:"✅ 加工OK", shipped:"🚚 集荷依頼済", done:"📦 引渡し完了"}[col.k]||"");
     const colNote2=(state.tab==="orders")?({new:"🚫 加工NG", shipped:"📦 引渡し未完了"}[col.k]||""):"";
     const colLabel=isIchibaTab?(ICHIBA_LABEL[col.k]||col.label):col.label;
@@ -1377,7 +1380,7 @@ function renderOrders(){
     if(!cards.length){ c.insertAdjacentHTML("beforeend",`<div class="col-empty">—</div>`); }
     cards.forEach((o)=>{
       const el=orderCard(o);
-      if(col.k==="done") el.classList.add("done-card"); // 完了は一律で薄く（CSS）
+      if(col.k==="done" && !isIchiba) el.classList.add("done-card"); // 完了は一律で薄く（CSS）
       c.appendChild(el);
     });
     board.appendChild(c);
