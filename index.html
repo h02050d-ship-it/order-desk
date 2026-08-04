@@ -1026,7 +1026,18 @@ async function seinoIssueFromDrawer(){
   const dateNote="\n📅 発送日: "+((shipDate&&shipDate!==_tds)?(shipDate+"（⚠️本日ではありません）"):"本日");
   const atena=corpName?corpAbbrev(corpName):(o.customer||"");  // 送り状は正式な宛名＝モール接頭辞は付けない（楽天/ヤフの接頭辞は加工予定表だけの社内表記）
   const dueShow=dueOv||o.deliveryDate;
-  if(!confirm("【西濃で送り状発行＋印刷】🟢本番\n\n宛名: "+atena+"\n〒"+(corpZip||o.shipZip||"?")+" "+(addr||"住所未取得")+(o.custType==="個人"&&o.branch?"\n止め: "+o.branch+"支店（住所は支店に自動変換）":"")+"\n個口: "+kouguchiTotal(o)+"個口"+dateNote+(dueShow?("\n⏰ 着指定: "+dueShow+"（送り状に配達指定で反映）"+(dueOv&&dueOv!==o.deliveryDate?" ⚠️変更あり":"")):"")+"\n\n西濃へ本番の出荷登録をし、会社PCの HL-L2375DW でA5自動印刷します。よろしいですか？")) return;
+  // 届け先の表示：支店止めは送り状に「支店の住所」が印刷される＝お客様住所ではないので、実際に印刷される方を出す
+  let atesakiBlock="";
+  if(o.custType==="個人"&&o.branch){
+    const _f=(window._fareLast&&window._fareLast.id===o.id)?window._fareLast:null;
+    const brAddr=(_f&&_f.officeAddr)||await seinoBranchAddr(o.branch)||"";
+    atesakiBlock="\n\n▼送り状に印刷される届け先（支店止め）\n西濃運輸 "+o.branch+"支店\n"
+      +(brAddr?brAddr:"⚠️ 支店住所を取得できませんでした（発行前に要確認）")
+      +"\n\n▼お客様の住所（送り状には印刷されません）\n〒"+(o.shipZip||"?")+" "+(addr||"住所未取得");
+  } else {
+    atesakiBlock="\n〒"+(corpZip||o.shipZip||"?")+" "+(addr||"住所未取得");
+  }
+  if(!confirm("【西濃で送り状発行＋印刷】🟢本番\n\n宛名: "+atena+atesakiBlock+"\n\n個口: "+kouguchiTotal(o)+"個口"+dateNote+(dueShow?("\n⏰ 着指定: "+dueShow+"（送り状に配達指定で反映）"+(dueOv&&dueOv!==o.deliveryDate?" ⚠️変更あり":"")):"")+"\n\n西濃へ本番の出荷登録をし、会社PCの HL-L2375DW でA5自動印刷します。よろしいですか？")) return;
   toast("西濃で発行中…");
   try{
     const u=new URL(API_URL); u.searchParams.set("action","seinoissue"); u.searchParams.set("id",o.id); if(window._seinoShipDate) u.searchParams.set("date",window._seinoShipDate);
