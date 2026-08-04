@@ -1,0 +1,3 @@
+# GASのソースは公開リポジトリに入れない（APIキー・パスワード・LINEトークン等を含むため）
+# 管理はclasp（GAS側が正本）。2026-08-03 push protectionでOpenAIキー混入を検知して除外
+gas/
