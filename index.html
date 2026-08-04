@@ -786,7 +786,7 @@ function initKakou(){
     firebase.auth().signInAnonymously().catch(e=>console.warn("kakou auth失敗",e));
   }catch(e){ console.warn("kakou init失敗",e); }
 }
-// EC商品名の節表記 → 加工予定表の等級選択肢（-,丸節,小節,特上小,無節,無節特上,生節,B丸節,B無節特上）
+// EC商品名の節表記 → 加工予定表の等級選択肢（-,丸節,小節,特上小,無節,無節特上,生節,B丸節,B特上小）
 function kakouGradeOf(fushi,bc){
   const g = /無節特上|特上無節/.test(fushi)?"無節特上"
         : /特上小|選上小|上小節|特上/.test(fushi)?"特上小"
@@ -794,7 +794,8 @@ function kakouGradeOf(fushi,bc){
         : /小節|^小$/.test(fushi)?"小節"
         : /無節|節無/.test(fushi)?"無節"
         : /節/.test(fushi)?"丸節":"-";
-  if(bc==="B"){ if(g==="丸節")return "B丸節"; if(g==="無節特上")return "B無節特上"; }
+  // B級は等級名で表す（備考の「B級品」は使わない）。該当の等級が無い場合は素の等級を返す
+  if(bc==="B"){ if(g==="丸節")return "B丸節"; if(g==="特上小"||g==="無節特上")return "B特上小"; }
   return g;
 }
 // テスト注文（注文番号がTEST-…）は加工予定表の対象外
@@ -822,6 +823,7 @@ function kakouRowsFor(o){
     if(o.custType==="個人"&&carrier==="西濃") rem.push((o.branch||"")+"支店止め");  // 支店止めは西濃のみ（佐川個人は宅配）
     if(/納品書/.test(String(o.remarks||""))) rem.push("納品書同梱");  // ヤフーNeedDetailedSlip→備考経由(2026-07-31)
     const _effDue=o.dueOverride||o.deliveryDate; if(_effDue) rem.push(String(_effDue).slice(5).replace("-","/")+"着指定");  // 合意した着指定日を優先
+    // B級は等級名（B丸節/B特上小）で表す。等級で表せない組合せ（B+無節等）のみ備考に残す
     if(p.grade==="B" && !/^B/.test(grade)) rem.push("B級品");
     const pre=o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":o.mall==="ichiba"?"":"ネット";  // 名前プレフィックス(様なし)
     // 法人名を確認済みなら「楽天(株)◯◯」形式（送り状宛名と同一表記・スペース除去）。未確認は姓/社名主要部
