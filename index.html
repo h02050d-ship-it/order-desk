@@ -840,7 +840,7 @@ function kakouRowsFor(o){
       seal:"無", danball:danballVal, remark:rem.filter(Boolean).join(" ")};
     if(/両端直角カット/.test(opt)) row.ryoutan="1";
     if(/塗装/.test(opt)) row.tosou="1";
-    if(/^B/.test(grade)) row.zaiko="1"; // B級=加工在庫（加工予定表側の自動チェックと同じ）
+    if(p.grade==="B" || /^B/.test(grade)) row.zaiko="1"; // B級=加工在庫。等級名がB始まりでない組合せ(B+無節等)も確実に付ける
     if(o.shipDate) row.due=String(o.shipDate).slice(0,10);  // 発送日→加工予定表の納期列（ISO）
     rows.push(row);
   });
