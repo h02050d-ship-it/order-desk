@@ -1089,8 +1089,8 @@ function _kakouAutoSD_(row){
 // 市場取引先の予定表表示名（社名＋拠点の略記）: 丸宇木材下館市場→丸宇下館 / ナイス(株)相模原→ナイス相模原 / 十亻入株式会社 相模原→ナイス相模原
 function ichibaShortName(name){
   let t=String(name||"").replace(/[（(]株[）)]|[（(]有[）)]|株式会社|有限会社|合同会社|合資会社/g,"").replace(/[\s　]+/g,"").trim();
-  t=t.replace(/十亻入|十亻又|ナイス/g,"ナイス");                 // OCRゆれを吸収
-  const brand=(t.match(/丸宇|ナイス|ニッチ|吉貞|勝山|中央木材|ミトモク|千葉木材|HIKARI|ひかり|アイザワ|糸永|金平|オオツカ|滝川|カネ信|内藤運輸/)||[])[0]||"";
+  t=t.replace(/十亻入|十亻又|ナイス/g,"ナイス").replace(/HIKARI|Hikari|hikari|ヒカリ/g,"ひかり");  // OCRゆれ吸収・ひかり表記に統一
+  const brand=(t.match(/丸宇|ナイス|ニッチ|吉貞|勝山|中央木材|ミトモク|千葉木材|ひかり|アイザワ|糸永|金平|オオツカ|滝川|カネ信|内藤運輸/)||[])[0]||"";
   if(!brand) return t.replace(/木材|市場|営業所|支店|木材店/g,"").slice(0,10);
   let rest=t.replace(brand,"").replace(/木材|市場|営業所|支店|木材店|センター/g,"").trim();  // 拠点名だけ残す
   return (brand+rest).slice(0,10);
