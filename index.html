@@ -559,7 +559,8 @@ function saveInqOverlay(q){
 
 /* ---------- helpers ---------- */
 const $ = s=>document.querySelector(s);
-const yen = n=>"¥"+Number(n||0).toLocaleString("ja-JP");
+// 楽天は送料未確定の注文に -9999 を返す（2m以上の運賃見積り前など）→金額ではなく状態として表示する
+const yen = n=>(Number(n)===-9999?"送料未確定":"¥"+Number(n||0).toLocaleString("ja-JP"));
 const esc = s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 // 節（等級）の色＝加工予定表に準拠。節有＝丸節と同じ赤
 const GRADE_COLORS={"丸節":"#d32f2f","節有":"#d32f2f","節あり":"#d32f2f","節":"#d32f2f","小節":"#ef6c00","小":"#ef6c00","上小節":"#2e7d32","特上小節":"#2e7d32","特上小":"#2e7d32","特上":"#2e7d32","無節特上":"#6a1b9a","特上無節":"#6a1b9a","無節":"#1565c0","節無":"#1565c0","生節":"#795548"};
