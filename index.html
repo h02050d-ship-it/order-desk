@@ -1064,6 +1064,9 @@ function kakouRegisterNow(id){ // 手動登録（ドロワー=引数なし / カ
 
 /* ---- 加工予定表 追加前の編集つき確認（この内容で追加していいですか？） ---- */
 const KAKOU_GRADES=["-","丸節","小節","特上小","無節","無節特上","生節","B丸節","B無節特上"];
+// 幅狭品(定番外: フローリング93/羽目板88)は加工幅105・入数 2m4m=9枚/3m=11枚
+function _isNarrow_(hin,w){ w=Number(w)||0; return (hin==="F"&&w===93)||(hin==="P"&&w===88); }
+function _kakouNarrowNyusu_(len){ len=Number(len)||0; if(len>=3600)return "9"; if(len>=2700)return "11"; if(len>=1800)return "9"; return ""; }
 function _kakouLen2Nyusu_(len){ len=Number(len)||0; if(len>=3600)return "8"; if(len>=2700)return "10"; if(len>=1800)return "8"; return ""; } // 市場束物の入数目安: 2m=8/3m=10/4m=8
 // 取引先ごとのシール・段ボールマスタ(加工予定表 sealList)から該当先を探す（表記ゆれは空白除去で緩くマッチ）
 function _sealMaster_(customer){
@@ -1103,10 +1106,12 @@ function _kakouPrefillRows_(o){
     const hin=/フローリング/.test(p.type)?"F":/羽目板/.test(p.type)?"P":/スノコ/.test(p.type)?"S":"F";
     const b=_kakouBlankRow_(o);
     b.hinmei=hin; b.grade=kakouGradeOf(p.fushi,p.grade)||"-";
-    b.thickness=d[0]; b.width=(hin==="F"||hin==="P")?"120":d[1]; b.length=d[2];
+    const _w0=Number(d[1])||0, _narrow=_isNarrow_(hin,_w0);
+    b.thickness=d[0]; b.width=_narrow?"105":((hin==="F"||hin==="P")?"120":d[1]); b.length=d[2];  // 幅狭品(F93/P88)は加工幅105
     const bund=Number(it.qty)||1;
     b.planned=String(bund);                 // 束数＝予定(個口)に仮置き
-    b.qty=_kakouLen2Nyusu_(d[2]);           // 入数の目安（2m8/3m10/4m8）
+    b.qty=_narrow?_kakouNarrowNyusu_(d[2]):_kakouLen2Nyusu_(d[2]);  // 入数の目安（通常2m8/3m10/4m8・幅狭2m4m=9/3m=11）
+    if(o.mall==="ichiba" && bund<=10 && !b.carrier) b.carrier="西濃";   // 10束以下は西濃を既定
     if(o.mall==="ichiba" && bund>=20 && !b.carrier) b.carrier="内藤";  // 数量20以上は内藤を既定（自社等の既定があれば尊重）
     b.due=o.dueOverride||o.deliveryDate||"";  // 納期＝着指定日があれば初期表示
     const sd=_kakouAutoSD_(b); b.seal=sd.seal; b.danball=sd.danball;
@@ -1531,7 +1536,7 @@ function openOrderDrawer(id){
       ${o.custType?`<span class="k">配送区分</span><span class="v">${o.custType==="法人"?"🏢 法人（宅配可）":(shipCarrier(o)==="西濃"?"🏠 個人（最寄り支店止め）":"🏠 個人（宅配）")}</span>`:""}
       ${o.deliveryMethod?`<span class="k">配送方法</span><span class="v">${esc(o.deliveryMethod)}</span>`:""}
     </div>
-    ${o.remarks?`<div class="remarks-box"><b>📝 お客様備考</b>\n${esc(o.remarks)}</div>`:""}
+    ${(o.remarks && !(o.mall==="ichiba" && o.src==="mail"))?`<div class="remarks-box"><b>📝 お客様備考</b>\n${esc(o.remarks)}</div>`:""}
     <label class="fld">お客様名</label>
     <input class="txt" id="o-cust" placeholder="例：堀上 / 佐藤" value="${esc(o.customer||'')}" />
     ${o.mall==="ichiba"?`
