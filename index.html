@@ -1059,7 +1059,14 @@ async function seinoIssueFromDrawer(){
 function kakouRegisterNow(id){ // 手動登録（ドロワー=引数なし / カードの🪵ボタン=id指定）→ 編集つき確認画面
   const o=getOrder(id||state.drawer.id); if(!o) return;
   if(!kakouDb||!kakouAuthed){ toast("加工予定表に接続できていません"); return; }
-  openKakouEditor(o,{advance:(o.mall==="ichiba"&&o.status==="new")});
+  // 市場: 同じ取引先の未登録注文が他にもあれば「まとめて登録」を提案（発送が同じならまとめる運用）
+  let mates=[];
+  if(o.mall==="ichiba" && o.status==="new"){
+    const key=ichibaShortName(o.customer);
+    mates=state.orders.filter(x=>x.mall==="ichiba" && x.status==="new" && x.id!==o.id && x.docType!=="対象外" && ichibaShortName(x.customer)===key);
+    if(mates.length && !confirm("🪵 "+key+" の未登録注文が他に"+mates.length+"件あります。\n\nOK＝まとめて1つの登録画面で開く（発送が違う行は配送欄で分けられます）\nキャンセル＝この注文だけ登録")) mates=[];
+  }
+  openKakouEditor(o,{advance:(o.mall==="ichiba"&&o.status==="new"), mates:mates});
 }
 
 /* ---- 加工予定表 追加前の編集つき確認（この内容で追加していいですか？） ---- */
@@ -1089,7 +1096,7 @@ function _kakouAutoSD_(row){
 // 市場取引先の予定表表示名（社名＋拠点の略記）: 丸宇木材下館市場→丸宇下館 / ナイス(株)相模原→ナイス相模原 / 十亻入株式会社 相模原→ナイス相模原
 function ichibaShortName(name){
   let t=String(name||"").replace(/[（(]株[）)]|[（(]有[）)]|株式会社|有限会社|合同会社|合資会社/g,"").replace(/[\s　]+/g,"").trim();
-  t=t.replace(/十亻入|十亻又|ナイス/g,"ナイス").replace(/HIKARI|Hikari|hikari|ヒカリ/g,"ひかり");  // OCRゆれ吸収・ひかり表記に統一
+  t=t.replace(/十亻入|十亻又|ナイス/g,"ナイス").replace(/Aishin\s*Hikari|アイシンヒカリ/gi,"ひかり").replace(/HIKARI|Hikari|hikari|ヒカリ/g,"ひかり");  // OCRゆれ吸収・ひかり表記に統一
   const brand=(t.match(/丸宇|ナイス|ニッチ|吉貞|勝山|中央木材|ミトモク|千葉木材|ひかり|アイザワ|糸永|金平|オオツカ|滝川|カネ信|内藤運輸/)||[])[0]||"";
   if(!brand) return t.replace(/木材|市場|営業所|支店|木材店/g,"").slice(0,10);
   let rest=t.replace(brand,"").replace(/木材|市場|営業所|支店|木材店|センター/g,"").trim();  // 拠点名だけ残す
@@ -1133,11 +1140,13 @@ async function openKakouEditor(o,opt){
   if(!window._sealList && kakouDb){ try{ const s=await kakouDb.ref("sealList").once("value"); window._sealList=s.val()||[]; }catch(e){ window._sealList=[]; } }
   const base=kakouRowsFor(o);
   const rows=base.length?base.map(r=>Object.assign({},r)):_kakouPrefillRows_(o);
-  state._kakouEd={id:o.id, advance:!!opt.advance, actual:(base[0]&&base[0].actual)||"-", rows:rows};
+  const mates=opt.mates||[];
+  mates.forEach(m=>{ const mb=kakouRowsFor(m); (mb.length?mb.map(r=>Object.assign({},r)):_kakouPrefillRows_(m)).forEach(r=>rows.push(r)); });  // 同一取引先の他注文もまとめて編集
+  state._kakouEd={id:o.id, mateIds:mates.map(m=>m.id), advance:!!opt.advance, actual:(base[0]&&base[0].actual)||"-", rows:rows};
   state.drawer={type:"kakou", id:o.id};
   window._drawerSnap=null;  // エディタは未保存確認の対象外
   $("#drawer").style.width="min(96vw, 1080px)"; // 予定表と同じ横一列表示のため広げる（閉じると元に戻る）
-  $("#d-head").innerHTML=`<h3>🪵 この内容で加工予定表に追加していいですか？</h3><button class="d-close" onclick="closeDrawer()">✕</button>`;
+  $("#d-head").innerHTML=`<h3>🪵 この内容で加工予定表に追加していいですか？${mates.length?`<span style="font-size:12px;font-weight:700;opacity:.85">（${mates.length+1}件をまとめて）</span>`:""}</h3><button class="d-close" onclick="closeDrawer()">✕</button>`;
   _kakouEdBody_();
   $("#d-foot").innerHTML=`<button class="btn ghost" onclick="closeDrawer()">キャンセル</button><button class="btn primary grow" onclick="kakouEdSubmit()">✅ この内容で追加${state._kakouEd.advance?"（→製造中へ）":""}</button>`;
   openDrawer();
@@ -1218,6 +1227,7 @@ async function kakouEdSubmit(){
   if(ed.advance && o.status==="new"){ // 市場：登録＝「予定表 登録済み」列へ（以降の製造・出荷は加工予定表で管理）
     o.status="preparing"; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.status="preparing";
     apiPost({action:"order", id:o.id, status:"preparing"});
+    (ed.mateIds||[]).forEach(mid=>{ const mo=getOrder(mid); if(mo&&mo.status==="new"){ mo.status="preparing"; mo.kakouAdded=true; const msv=(SERVER.orders||[]).find(x=>x.id===mid); if(msv){ msv.status="preparing"; msv.kakouAdded=true; } apiPost({action:"order", id:mid, status:"preparing", kakouAdded:true}); } });  // まとめた注文も登録済みへ
   }
   toast("🪵 加工予定表: "+(res.written?"登録"+res.written+"行":"登録なし")+(res.skipped?"（既存行あり"+res.skipped+"件スキップ）":"")+(ed.advance?"・製造中へ移動":""));
   state._kakouEd=null; closeDrawer(); render();
