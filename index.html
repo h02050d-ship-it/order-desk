@@ -629,7 +629,7 @@ function itemLineHTML(it){
   const p=parseItem(it.name);
   const n=Number(it.qty)||1;
   const opt=String(it.opt||"");
-  const cut=/両端直角カット/.test(opt), tosou=/塗装/.test(opt);
+  const cut=/カット/.test(opt), tosou=/塗装/.test(opt);
   if(!p.wood && !p.type && !p.dim){
     return `<div class="i-item"><div class="i-main"><div class="i-l1"><span class="i-name">${esc(cleanItem(it.name))}</span></div></div><div class="i-cnt">×${n}</div></div>`;
   }
@@ -839,7 +839,7 @@ function kakouRowsFor(o){
 
       qty:String(qty), planned:String(planned), actual:actualVal,
       seal:"無", danball:danballVal, remark:rem.filter(Boolean).join(" ")};
-    if(/両端直角カット/.test(opt)) row.ryoutan="1";
+    if(/カット/.test(opt)) row.ryoutan="1";  // 「カット+塗装」等どの表記でも両切ON（GAS側と同一判定）
     if(/塗装/.test(opt)) row.tosou="1";
     if(p.grade==="B" || /^B/.test(grade)) row.zaiko="1"; // B級=加工在庫。等級名がB始まりでない組合せ(B+無節等)も確実に付ける
     if(o.shipDate) row.due=String(o.shipDate).slice(0,10);  // 発送日→加工予定表の納期列（ISO）
