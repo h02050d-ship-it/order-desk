@@ -829,7 +829,7 @@ function kakouRowsFor(o){
     const pre=o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":o.mall==="ichiba"?"":"ネット";  // 名前プレフィックス(様なし)
     // 法人名を確認済みなら「楽天(株)◯◯」形式（送り状宛名と同一表記・スペース除去）。未確認は姓/社名主要部
     const sur=o.mall==="ichiba"?ichibaShortName(o.customer):(o.corpName?corpAbbrev(o.corpName).replace(/[ 　]+/g,""):kakouSur(o.customer));
-    const carVal=carrier==="西濃"?"西濃":"";  // 配送列（加工予定表は西濃/内藤中心。佐川宅配は空）
+    const carVal=carrier==="西濃"?"西濃":carrier==="佐川"?"佐川":"";  // 配送列（佐川1m宅配も出す・GAS側と同一 2026-08-20）
     const danballVal=(carVal==="西濃"||/無節|特上小/.test(grade))?"有":"無";  // 西濃必須 or 特上小/無節のみ段ボール（丸節等は無）
     const uid=("od_"+String(o.id||o.orderNo)+"_"+idx).replace(/[.#$/\[\]:]/g,"_");
     const row={_uid:uid, order:"4",
