@@ -830,7 +830,7 @@ function kakouRowsFor(o){
     // 法人名を確認済みなら「楽天(株)◯◯」形式（送り状宛名と同一表記・スペース除去）。未確認は姓/社名主要部
     const sur=o.mall==="ichiba"?ichibaShortName(o.customer):(o.corpName?corpAbbrev(o.corpName).replace(/[ 　]+/g,""):kakouSur(o.customer));
     const carVal=carrier==="西濃"?"西濃":carrier==="佐川"?"佐川":"";  // 配送列（佐川1m宅配も出す・GAS側と同一 2026-08-20）
-    const danballVal=(carVal==="西濃"||/無節|特上小/.test(grade))?"有":"無";  // 西濃必須 or 特上小/無節のみ段ボール（丸節等は無）
+    const danballVal=(carVal==="西濃"||carVal==="佐川"||/無節|特上小/.test(grade))?"有":"無";  // 引取以外(西濃・佐川)は段ボール必須。等級 特上小/無節も有
     const uid=("od_"+String(o.id||o.orderNo)+"_"+idx).replace(/[.#$/\[\]:]/g,"_");
     const row={_uid:uid, order:"4",
       customer:pre+sur, carrier:carVal,
@@ -1087,7 +1087,7 @@ function _sealMaster_(customer){
 function _kakouAutoSD_(row){
   const m=_sealMaster_(row.customer);
   let seal,danball;
-  if(row.carrier==="西濃"){ seal="無"; danball="有"; }                       // 西濃=シールなし・段ボール必須
+  if(row.carrier==="西濃"||row.carrier==="佐川"){ seal="無"; danball="有"; }   // 引取以外(西濃・佐川)=シールなし・段ボール必須
   else{
     seal = row.carrier==="内藤" ? "有" : (m? (m.seal?"有":"無") : "無");        // 内藤=シール有／他は取引先マスタ
     danball = (m&&m.danball) ? "有" : (/無節|特上小/.test(row.grade)?"有":"無"); // 段ボールは取引先マスタ有 or 特上小/無節のみ（丸節等は無）
