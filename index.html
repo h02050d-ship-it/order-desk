@@ -669,6 +669,19 @@ function kakouSur(customer){
   if(/^(株式会社|有限会社|合同会社|合資会社|\(株\)|（株）|\(有\)|（有）)$/.test(parts[0]) && parts[1]) return parts[1];
   return (parts[0].replace(/^(株式会社|有限会社|合同会社|\(株\)|（株）|\(有\)|（有）)/,"")||parts[0]);
 }
+function kakouPre(mall){ return mall==="rakuten"?"楽天":mall==="yahoo"?"ヤフ":mall==="ichiba"?"":"ネット"; } // 名前プレフィックス(様なし)
+// 加工予定表の取引先名。法人名を確認済みなら「楽天(株)◯◯」＝送り状シールの宛名と同じ表記にして、
+// 現場が「シールの会社名＝予定表のこの行」と一目で照合できるようにする（GAS _kakouName_ と同一）
+function kakouName(o){
+  const pre=kakouPre(o.mall);
+  if(o.mall==="ichiba") return pre+ichibaShortName(o.customer);
+  const corp=String(o.corpName||"").trim();
+  return pre+(corp?corpAbbrev(corp).replace(/[ 　]+/g,""):kakouSur(o.customer));
+}
+// 法人名を使わない素の自動生成名。既存行がこの形のままか＝スタッフが手直ししていないかの判定に使う
+function kakouNamePlain(o){
+  return kakouPre(o.mall)+(o.mall==="ichiba"?ichibaShortName(o.customer):kakouSur(o.customer));
+}
 function needsFreight(o){ return (o.mall==="rakuten"||o.mall==="yahoo") && itemMaxLen(o)>=1820; } // 2m以上＝運賃見積り（楽天・ヤフーとも。2m=1820表記）
 // 運賃ツール連携URL（届け先住所＋都道府県＋長さ区分＋束数を渡して自動計算・営業所検索）
 const FARE_URL="https://h02050d-ship-it.github.io/fare-calculator/";
@@ -826,14 +839,11 @@ function kakouRowsFor(o){
     const _effDue=o.dueOverride||o.deliveryDate; if(_effDue) rem.push(String(_effDue).slice(5).replace("-","/")+"着指定");  // 合意した着指定日を優先
     // B級は等級名（B丸節/B特上小）で表す。等級で表せない組合せ（B+無節等）のみ備考に残す
     if(p.grade==="B" && !/^B/.test(grade)) rem.push("B級品");
-    const pre=o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":o.mall==="ichiba"?"":"ネット";  // 名前プレフィックス(様なし)
-    // 法人名を確認済みなら「楽天(株)◯◯」形式（送り状宛名と同一表記・スペース除去）。未確認は姓/社名主要部
-    const sur=o.mall==="ichiba"?ichibaShortName(o.customer):(o.corpName?corpAbbrev(o.corpName).replace(/[ 　]+/g,""):kakouSur(o.customer));
     const carVal=carrier==="西濃"?"西濃":carrier==="佐川"?"佐川":"";  // 配送列（佐川1m宅配も出す・GAS側と同一 2026-08-20）
     const danballVal=(carVal==="西濃"||carVal==="佐川"||/無節|特上小/.test(grade))?"有":"無";  // 引取以外(西濃・佐川)は段ボール必須。等級 特上小/無節も有
     const uid=("od_"+String(o.id||o.orderNo)+"_"+idx).replace(/[.#$/\[\]:]/g,"_");
     const row={_uid:uid, order:"4",
-      customer:pre+sur, carrier:carVal,
+      customer:kakouName(o), carrier:carVal,
       hinmei:hin, grade:grade,
       thickness:d[0], width:((hin==="F"||hin==="P")?"120":d[1]), length:d[2], // 加工幅は原板120(羽目板103/ﾌﾛｰﾘﾝｸﾞ108→120表記)
 
@@ -964,6 +974,11 @@ async function kakouUpdateStatus_(o){
     if((a==="配送確認"||a==="注文確定"||a==="支払確認"||a==="-"||a===""||a==null) && a!==r.actual){
       try{ await kakouDb.ref("items/"+r._uid+"/actual").set(r.actual); }catch(e){}
     }
+    // 法人名が後から入力されたら取引先名も追従（送り状シールの宛名と揃える）。
+    // 現在値が自動生成のまま（接頭辞+姓）のときだけ＝スタッフが手で直した名前・出荷完了行は触らない
+    if(r.customer && ex.customer!==r.customer && ex.archived!=="1" && String(ex.customer||"")===kakouNamePlain(o)){
+      try{ await kakouDb.ref("items/"+r._uid+"/customer").set(r.customer); }catch(e){}
+    }
   }
 }
 // ドロワー保存時: 法人名(取引先)・発送日(納期)・着日(備考の着指定)を加工予定表の既存行へ即反映。
@@ -999,7 +1014,9 @@ function copyShipInfo(){
   const car=shipCarrier(o);
   const items=(o.items||[]).filter(i=>!/オプション|カット|サンプル/.test(i.name)).map(i=>cleanItem(i.name)+(Number(i.qty)>1?" ×"+i.qty:"")).join(" / ");
   const L=["【送り状発行】"+car+"　注文:"+o.orderNo];
-  L.push("届け先: "+(o.customer||"（要手入力）")+" 様");
+  // 法人名を確認済みならそれが宛名（西濃の送り状APIと同じ扱い）。担当者名は括弧で併記
+  L.push(o.corpName ? "届け先: "+corpAbbrev(o.corpName)+" 御中"+(o.customer?"（ご担当 "+o.customer+" 様）":"")
+                    : "届け先: "+(o.customer||"（要手入力）")+" 様");
   L.push("住所/TEL: "+((o.opMemo&&/〒|県|都|府|道|市|区|町|村/.test(o.opMemo))?o.opMemo.replace(/^【[^】]*】\s*/,''):"（モール注文詳細から取得）"));
   L.push("品名: "+items);
   L.push("個口: "+kouguchiTotal(o)+"個口");
@@ -1119,12 +1136,10 @@ function ichibaShortName(name){
   return (brand+rest).slice(0,10);
 }
 function _kakouBlankRow_(o){
-  const pre=o.mall==="rakuten"?"楽天":o.mall==="yahoo"?"ヤフ":o.mall==="ichiba"?"":"ネット";
-  const sur=o.mall==="ichiba"?ichibaShortName(o.customer):kakouSur(o.customer);
   const car=shipCarrier(o);
   // 市場は既定なし。ただしナイス沼津は浜松市場へ自社搬入が定型のため「自社」を既定に
   const carrier=o.mall==="ichiba" ? (/ナイス\s*沼津|沼津木材/.test(String(o.customer||""))?"自社":"") : (car==="西濃"?"西濃":"");
-  const row={customer:pre+sur, carrier:carrier, hinmei:"F", grade:"-",
+  const row={customer:kakouName(o), carrier:carrier, hinmei:"F", grade:"-",
     thickness:"", width:"120", length:"", qty:"", planned:"1", seal:"無", danball:"無", due:"", remark:""};
   const sd=_kakouAutoSD_(row); row.seal=sd.seal; row.danball=sd.danball;
   return row;
@@ -1626,21 +1641,22 @@ function openOrderDrawer(id){
       <div id="mail-send-note" style="display:none;font-size:11px;color:var(--muted);margin-top:6px">宛先：お客様の楽天メルアド（From: info@hayazai.com）。文面は上のプレビューで編集できます。送信すると「メール送信済み」に自動チェックされます。</div>`:""}
     </div>`:""}
     ${o.mall==="ichiba"?"":`<div class="sec-t">送り状発行（${esc(shipCarrier(o))}）</div>
+    ${o.custType==="法人"?`
+    <div style="border:1.5px solid #e6910044;background:#e6910010;border-radius:8px;padding:8px 10px;margin-bottom:8px">
+      <div style="font-size:11.5px;font-weight:800;margin-bottom:6px">🏢 法人の届け先（宛名は法人名で印刷されます）</div>
+      <input class="txt" id="seino-corp-name" placeholder="法人名・屋号（必須・例：株式会社◯◯ ◯◯支店）" value="${esc(o.corpName||"")}" style="margin-bottom:6px" />
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">保存すると加工予定表の取引先も「${esc(kakouName(Object.assign({},o,{corpName:o.corpName||"株式会社◯◯"})))}」になります（送り状シールと同じ表記で現場が照合できるように）。</div>
+      ${shipCarrier(o)==="西濃"?`<div style="display:flex;gap:6px;margin-bottom:6px">
+        <input class="txt" id="seino-corp-zip" value="${esc(o.corpZip||o.shipZip||"")}" placeholder="〒" style="flex:0 0 110px" />
+        <input class="txt" id="seino-corp-addr" value="${esc(o.corpAddr||o.shipAddr||"")}" placeholder="住所" style="flex:1" />
+      </div>
+      <label style="font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:6px"><input type="checkbox" id="seino-addr-ok"> 届け先住所に間違いがないことを確認した（違う場合は上で修正）</label>`:""}
+    </div>`:""}
     ${shipCarrier(o)==="西濃"?`
       ${o.seinoOkurijoNo?`<div class="prep-line"><span>🚚 西濃送り状</span><span class="done">✅ 発行済 ${esc(o.seinoOkurijoNo)}${o.seinoNotified?" ・楽天通知済":""}</span></div>
       <div style="display:flex;gap:8px;margin:6px 0">
         <button class="btn ghost sm" style="flex:1" onclick="window.open('https://track.seino.co.jp/kamotsu/GempyoNoShokai.do?GNPNO1=${esc(o.seinoOkurijoNo)}','_blank')">📍 配達状況を追跡</button>
         <button class="btn ghost sm" style="flex:1" onclick="seinoPdfView('${esc(o.seinoOkurijoNo)}')">📄 送り状PDFを見る</button>
-      </div>`:""}
-      ${o.custType==="法人"?`
-      <div style="border:1.5px solid #e6910044;background:#e6910010;border-radius:8px;padding:8px 10px;margin-bottom:8px">
-        <div style="font-size:11.5px;font-weight:800;margin-bottom:6px">🏢 法人の届け先（宛名は法人名で印刷されます）</div>
-        <input class="txt" id="seino-corp-name" placeholder="法人名・屋号（必須・例：株式会社◯◯ ◯◯支店）" value="${esc(o.corpName||"")}" style="margin-bottom:6px" />
-        <div style="display:flex;gap:6px;margin-bottom:6px">
-          <input class="txt" id="seino-corp-zip" value="${esc(o.corpZip||o.shipZip||"")}" placeholder="〒" style="flex:0 0 110px" />
-          <input class="txt" id="seino-corp-addr" value="${esc(o.corpAddr||o.shipAddr||"")}" placeholder="住所" style="flex:1" />
-        </div>
-        <label style="font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:6px"><input type="checkbox" id="seino-addr-ok"> 届け先住所に間違いがないことを確認した（違う場合は上で修正）</label>
       </div>`:""}
       ${o.deliveryDate?`
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
