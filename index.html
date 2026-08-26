@@ -943,12 +943,27 @@ async function ichibaKakouStatusSync(){
 }
 // 既登録行の「実際(確認ステータス)」だけを追従更新。スタッフが数値等を入れていたら触らない
 async function kakouUpdateStatus_(o){
-  for(const r of kakouRowsFor(o)){
-    try{
-      const snap=await kakouDb.ref("items/"+r._uid).once("value"); const ex=snap.val(); if(!ex) continue;
-      const a=ex.actual;
-      if((a==="配送確認"||a==="注文確定"||a==="支払確認"||a==="-"||a===""||a==null) && a!==r.actual){ await kakouDb.ref("items/"+r._uid+"/actual").set(r.actual); }
-    }catch(e){}
+  let rows=kakouRowsFor(o); const snaps={};
+  for(const r of rows){
+    try{ const snap=await kakouDb.ref("items/"+r._uid).once("value"); snaps[r._uid]=snap.val(); }catch(e){}
+  }
+  // 逆同期: 加工予定表で「配送確認」を外しポップアップでOKした行(ship_ok=1)→注文側にもチェックを入れる。
+  // 先にこれをやらないと下の追従更新が「配送確認」へ書き戻してしまう（GAS側 ingestKakouAuto_ と同じ処理）
+  const okKeys=rows.map(r=>r._uid).filter(u=>{ const e=snaps[u]; return e && (e.ship_ok==="1"||e.ship_ok===1||e.ship_ok===true); });
+  if(okKeys.length && !o.shipConfirmed){
+    o.shipConfirmed=true;
+    const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.shipConfirmed=true;
+    if(API_URL) apiPost({action:"order", id:o.id, shipConfirmed:true});
+    rows=kakouRowsFor(o);   // 確認済みとして「実際」を再計算（未入金なら支払確認・済みなら"-"）
+    toast("🚚 加工予定表から: "+orderName(o)+" を配送確認済みにしました");
+  }
+  for(const u of okKeys){ try{ await kakouDb.ref("items/"+u+"/ship_ok").remove(); }catch(e){} }
+  for(const r of rows){
+    const ex=snaps[r._uid]; if(!ex) continue;
+    const a=ex.actual;
+    if((a==="配送確認"||a==="注文確定"||a==="支払確認"||a==="-"||a===""||a==null) && a!==r.actual){
+      try{ await kakouDb.ref("items/"+r._uid+"/actual").set(r.actual); }catch(e){}
+    }
   }
 }
 // ドロワー保存時: 法人名(取引先)・発送日(納期)・着日(備考の着指定)を加工予定表の既存行へ即反映。
