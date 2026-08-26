@@ -989,14 +989,17 @@ async function kakouApplyOrderInfo(o){
   for(const r of kakouRowsFor(o)){
     try{
       const snap=await kakouDb.ref("items/"+r._uid).once("value"); const ex=snap.val();
-      if(!ex || ex.archived==="1") continue;
+      if(!ex) continue;
       const upd={};
-      if(r.customer && ex.customer!==r.customer) upd.customer=r.customer;                      // 法人名確認済→「楽天(株)◯◯」
-      if(r.due && ex.due!==r.due) upd.due=r.due;                                               // 発送日→納期
-      if(dueTok){
-        const rm=String(ex.remark||"");
-        const nrm=/\d{1,2}\/\d{1,2}着指定/.test(rm) ? rm.replace(/\d{1,2}\/\d{1,2}着指定/g,dueTok) : (rm?rm+" "+dueTok:dueTok);
-        if(nrm!==rm) upd.remark=nrm;
+      // 法人名確認済→「楽天(株)◯◯」。出荷完了(archived)行も改名するが、自動生成名(接頭辞+姓)のままの行だけ＝スタッフの手直しは温存
+      if(r.customer && ex.customer!==r.customer && String(ex.customer||"")===kakouNamePlain(o)) upd.customer=r.customer;
+      if(ex.archived!=="1"){
+        if(r.due && ex.due!==r.due) upd.due=r.due;                                             // 発送日→納期
+        if(dueTok){
+          const rm=String(ex.remark||"");
+          const nrm=/\d{1,2}\/\d{1,2}着指定/.test(rm) ? rm.replace(/\d{1,2}\/\d{1,2}着指定/g,dueTok) : (rm?rm+" "+dueTok:dueTok);
+          if(nrm!==rm) upd.remark=nrm;
+        }
       }
       if(Object.keys(upd).length) await kakouDb.ref("items/"+r._uid).update(upd);
     }catch(e){}
