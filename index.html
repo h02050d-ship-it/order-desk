@@ -1345,25 +1345,60 @@ async function genConfirmMail(){
   }
   const box=document.getElementById("mail-preview");
   if(box){ box.value=wrapConfirmMail(o, body); box.style.display="block"; box.style.height="420px"; }
-  const sb=document.getElementById("mail-send"), sn=document.getElementById("mail-send-note");
-  if(sb) sb.style.display="block"; if(sn) sn.style.display="block";
-  toast(total ? "文面を生成しました。内容を確認して「📨 送信」を押してください" : "⚠️ 送料は別途見積り（北海道/沖縄/離島等）。送料欄を手入力してください");
+  const sb=document.getElementById("mail-send"), s2=document.getElementById("mail-send2"), sn=document.getElementById("mail-send-note");
+  if(sb) sb.style.display="block"; if(s2) s2.style.display="flex"; if(sn) sn.style.display="block";
+  toast(total ? "文面を生成しました。内容を確認して「📨💬 両方に送る」を押してください（片方だけも下のボタンで選べます）" : "⚠️ 送料は別途見積り（北海道/沖縄/離島等）。送料欄を手入力してください");
 }
-// プレビュー確認後にお客様（あんしんメルアド）へ送信。成功でメール送信済み✅
-async function sendConfirmMail(){
-  const o=getOrder(state.drawer.id); if(!o) return;
-  const body=(document.getElementById("mail-preview")?.value||"").trim();
-  if(!body){ toast("先に文面を生成してください"); return; }
-  if(!confirm("お客様に配送確認メールを送信します。\n\n宛先：お客様の楽天メルアド\nFrom：info@hayazai.com\n\nプレビューの内容で送信してよろしいですか？")) return;
+// 配送確認の連絡経路は2つ: ①メール（楽天あんしんメルアド宛・GASから自動送信） ②顧客問合せ R-Messe（文面コピー→貼付）
+// 既定は「両方に送る」。片方だけのボタンも残してある。どの経路でも連絡済み✅が立つ。
+function confirmMailBody_(){ return (document.getElementById("mail-preview")?.value||"").trim(); }
+async function copyMailText_(text){
+  try{ await navigator.clipboard.writeText(text); return true; }
+  catch(e){ const ta=document.getElementById("mail-preview"); if(ta){ ta.select(); document.execCommand("copy"); return true; } return false; }
+}
+function markMailSent_(o){
+  o.mailSent=true; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.mailSent=true;
+  if(API_URL) apiPost({action:"order", id:o.id, mailSent:true});
+}
+// ①メール送信（あんしんメルアド宛・GAS rkSendMail）
+async function sendMailCore_(o, body){
   toast("📨 送信中…");
   try{
     const r=await apiCall({action:"rkSendMail", id:o.id, orderNo:o.orderNo, subject:"【要返信】ご注文・配送の確認（林材木店）", body});
-    if(r.ok){
-      o.mailSent=true; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.mailSent=true;
-      toast("📨 送信しました（メール送信済み✅）"); render(); openOrderDrawer(o.id);
-    } else toast("送信失敗: "+(r.error||""));
-  }catch(e){ toast("通信エラー"); }
+    if(r.ok){ markMailSent_(o); toast("📨 メールを送信しました（連絡済み✅）"); return true; }
+    toast("送信失敗: "+(r.error||"")); return false;
+  }catch(e){ toast("通信エラー"); return false; }
 }
+// 📨 メールだけ
+async function sendConfirmMail(){
+  const o=getOrder(state.drawer.id); if(!o) return;
+  const body=confirmMailBody_();
+  if(!body){ toast("先に文面を生成してください"); return; }
+  if(!confirm("お客様に配送確認メールを送信します。\n\n宛先：お客様の楽天メルアド\nFrom：info@hayazai.com\n\nプレビューの内容で送信してよろしいですか？")) return;
+  if(await sendMailCore_(o, body)){ render(); openOrderDrawer(o.id); }
+}
+// 💬 顧客問合せ（R-Messe）だけ＝文面をコピーして楽天の問い合わせ画面を開く（送信ボタンは人が押す）
+async function openRmesseConfirm(quiet){
+  const o=getOrder(state.drawer.id); if(!o) return false;
+  const body=confirmMailBody_();
+  if(!body){ toast("先に文面を生成してください"); return false; }
+  await copyMailText_(body);
+  window.open(MALL.rakuten.msgUrl,"_blank");   // ※コピー→openの順（copyAndOpenMallと同じ。逆にすると焦点が移りコピーが落ちる）
+  markMailSent_(o);
+  if(!quiet){ toast("📋 文面をコピーしました。R-Messeの「お客様への問い合わせ」に貼り付けて送信してください"); render(); openOrderDrawer(o.id); }
+  return true;
+}
+// 📨💬 両方（既定）: 文面をコピー＋R-Messeを別タブで開く → そのままメールも自動送信
+async function sendConfirmBoth(){
+  const o=getOrder(state.drawer.id); if(!o) return;
+  const body=confirmMailBody_();
+  if(!body){ toast("先に文面を生成してください"); return; }
+  if(!confirm("同じ文面を2経路でお客様に連絡します。\n\n① メール：お客様の楽天メルアド（From: info@hayazai.com）＝このまま自動送信\n② 顧客問合せ：R-Messeを別タブで開きます（文面はコピー済み）→貼り付けて送信してください\n\nよろしいですか？")) return;
+  await openRmesseConfirm(true);
+  await sendMailCore_(o, body);
+  render(); openOrderDrawer(o.id);
+}
+
 function toggleTaishogai(){ state.showTaishogai=!state.showTaishogai; render(); }
 // 市場注文をアーカイブ（重複・誤取込など）。docType=対象外＋完了へ→ボードから消えるが「対象外アーカイブを表示」で戻せる
 function archiveIchiba(id){
@@ -1621,7 +1656,7 @@ function openOrderDrawer(id){
     <div class="prep-box ${kakouReady(o)?'ok':''}">
       <div class="prep-line"><span>💰 支払</span><span class="${isPaidOk(o)?'done':'wait'}">${isPaidOk(o)?'✅ 確認済':'⏳ 入金待ち'}</span></div>
       ${(needsShipConfirm(o)&&o.status==="new")?`
-      ${o.mall==="rakuten"?`<label class="prep-check"><input type="checkbox" id="o-mailsent" ${o.mailSent?'checked':''} onchange="toggleMailSent()"> 📧 配送確認メール送信済み（送料・お届けの案内メールを送った）</label>`:""}
+      ${o.mall==="rakuten"?`<label class="prep-check"><input type="checkbox" id="o-mailsent" ${o.mailSent?'checked':''} onchange="toggleMailSent()"> 📧 配送確認の連絡済み（メール／顧客問合せで送料・お届けを案内した）</label>`:""}
       <label class="prep-check"><input type="checkbox" id="o-shipconf" ${o.shipConfirmed?'checked':''} onchange="toggleShipConfirm()"> 🚚 配送確認済み（送料・営業所・お届け方法をお客様と確認した）</label>`
       :needsShipConfirm(o)?`<div class="prep-line"><span>🚚 配送</span><span class="done">✅ 確認済</span></div>`
       :`<div class="prep-line"><span>🚚 配送</span><span class="done">✅ ${esc(shipCarrier(o))}（確認不要）</span></div>`}
@@ -1643,8 +1678,12 @@ function openOrderDrawer(id){
       <div class="fare-inline" style="margin-top:8px"></div>
       ${o.mall==="rakuten"?`<button class="btn ghost" style="width:100%;margin-top:8px" onclick="genConfirmMail()">📧 配送確認メール文面を生成</button>
       <textarea id="mail-preview" class="txt" style="display:none;margin-top:8px;font-size:12px;line-height:1.6"></textarea>
-      <button id="mail-send" class="btn primary" style="display:none;width:100%;margin-top:8px" onclick="sendConfirmMail()">📨 内容を確認した → お客様に送信</button>
-      <div id="mail-send-note" style="display:none;font-size:11px;color:var(--muted);margin-top:6px">宛先：お客様の楽天メルアド（From: info@hayazai.com）。文面は上のプレビューで編集できます。送信すると「メール送信済み」に自動チェックされます。</div>`:""}
+      <button id="mail-send" class="btn primary" style="display:none;width:100%;margin-top:8px" onclick="sendConfirmBoth()">📨💬 内容を確認した → 両方に送る（メール＋顧客問合せ）</button>
+      <div id="mail-send2" style="display:none;gap:6px;margin-top:6px">
+        <button class="btn ghost" style="flex:1" onclick="openRmesseConfirm()">💬 顧客問合せ（R-Messe）だけ</button>
+        <button class="btn ghost" style="flex:1" onclick="sendConfirmMail()">📨 メールだけ</button>
+      </div>
+      <div id="mail-send-note" style="display:none;font-size:11px;color:var(--muted);margin-top:6px">両方＝①お客様の楽天メルアド宛に自動送信（From: info@hayazai.com）＋②同じ文面をコピーしてR-Messe（顧客問合せ）を別タブで開く→貼り付けて送信。どの経路でも「配送確認の連絡済み」に自動チェックされます。文面は上のプレビューで編集できます。</div>`:""}
     </div>`:""}
     ${o.mall==="ichiba"?"":`<div class="sec-t">送り状発行（${esc(shipCarrier(o))}）</div>
     ${o.custType==="法人"?`
@@ -2136,7 +2175,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
 });
 // expose for inline onclick
-Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,yahooShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline,saveDocType,honjitsuRun,seinoPdfView,genConfirmMail,sendConfirmMail,toggleTaishogai,archiveIchiba,kakouEdAddRow,kakouEdDelRow,kakouEdCopyRow,kakouEdRecalc,kakouEdSubmit});
+Object.assign(window,{closeDrawer,saveOrderFromDrawer,jumpToInquiryByOrder,copyAndOpenMall,markReplied,saveNewOrder,saveNewInq,resetTemplates,logout,rakutenConfirmFromDrawer,rakutenShipFromDrawer,yahooShipFromDrawer,toggleShipConfirm,toggleMailSent,kakouRegisterNow,copyShipInfo,seinoIssueFromDrawer,loadFareInline,saveDocType,honjitsuRun,seinoPdfView,genConfirmMail,sendConfirmMail,sendConfirmBoth,openRmesseConfirm,toggleTaishogai,archiveIchiba,kakouEdAddRow,kakouEdDelRow,kakouEdCopyRow,kakouEdRecalc,kakouEdSubmit});
 </script>
 </body>
 </html>
