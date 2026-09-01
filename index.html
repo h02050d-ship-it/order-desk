@@ -1354,7 +1354,18 @@ async function genConfirmMail(){
 function confirmMailBody_(){ return (document.getElementById("mail-preview")?.value||"").trim(); }
 async function copyMailText_(text){
   try{ await navigator.clipboard.writeText(text); return true; }
-  catch(e){ const ta=document.getElementById("mail-preview"); if(ta){ ta.select(); document.execCommand("copy"); return true; } return false; }
+  catch(e){
+    try{ const ta=document.createElement("textarea"); ta.value=text; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); return true; }
+    catch(e2){ return false; }
+  }
+}
+// 顧客問合せ(R-Messe)用の本文＝メールの上下定型文（ヘッダ・署名）を外した中身だけ。
+// R-Messeはチャット形式で相手も店舗も特定済みなので署名は付けない（プレビューを手直ししてもそのまま反映される）。
+function messeBody_(){
+  let t=confirmMailBody_(); if(!t) return "";
+  if(t.indexOf(MAIL_HEADER)===0) t=t.slice(MAIL_HEADER.length);
+  const si=t.lastIndexOf(MAIL_SIGNATURE); if(si>=0) t=t.slice(0,si);
+  return t.trim();
 }
 function markMailSent_(o){
   o.mailSent=true; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.mailSent=true;
@@ -1377,23 +1388,39 @@ async function sendConfirmMail(){
   if(!confirm("お客様に配送確認メールを送信します。\n\n宛先：お客様の楽天メルアド\nFrom：info@hayazai.com\n\nプレビューの内容で送信してよろしいですか？")) return;
   if(await sendMailCore_(o, body)){ render(); openOrderDrawer(o.id); }
 }
-// 💬 顧客問合せ（R-Messe）だけ＝文面をコピーして楽天の問い合わせ画面を開く（送信ボタンは人が押す）
+// 💬 顧客問合せ（R-Messe）: まずAPIで送信（問い合わせ管理API inquiry/reply・署名なし）。
+// 送れないケース＝①その注文の問い合わせスレッドが無い（新規スレッド作成のAPIは楽天に無い）②API未許可。
+// その時は従来どおり文面をコピーしてR-Messe画面を開く（貼り付けて送信）。
 async function openRmesseConfirm(quiet){
   const o=getOrder(state.drawer.id); if(!o) return false;
-  const body=confirmMailBody_();
-  if(!body){ toast("先に文面を生成してください"); return false; }
-  await copyMailText_(body);
-  window.open(MALL.rakuten.msgUrl,"_blank");   // ※コピー→openの順（copyAndOpenMallと同じ。逆にすると焦点が移りコピーが落ちる）
+  const msg=messeBody_();
+  if(!msg){ toast("先に文面を生成してください"); return false; }
+  if(!quiet) toast("💬 顧客問合せに送信中…");
+  let r={};
+  try{ r=await apiCall({action:"rkMesseSend", id:o.id, orderNo:o.orderNo, message:msg}); }
+  catch(e){ r={ok:false, code:"net", error:"通信エラー"}; }
+  if(r && r.ok){
+    markMailSent_(o);
+    toast("💬 顧客問合せ（R-Messe）で送信しました（連絡済み✅）");
+    if(!quiet){ render(); openOrderDrawer(o.id); }
+    return true;
+  }
+  const why=(r&&r.code==="no_thread") ? "この注文の問い合わせスレッドが無いためAPI送信不可（新規は画面から）"
+          : (r&&r.code==="not_authorized") ? "問い合わせ管理APIが未許可（RMSでAPI利用申請が必要）"
+          : "API送信不可"+((r&&r.error)?"（"+r.error+"）":"");
+  await copyMailText_(msg);
+  const w=window.open(MALL.rakuten.msgUrl,"_blank");   // ※コピー→openの順（逆にすると焦点が移りコピーが落ちる）
   markMailSent_(o);
-  if(!quiet){ toast("📋 文面をコピーしました。R-Messeの「お客様への問い合わせ」に貼り付けて送信してください"); render(); openOrderDrawer(o.id); }
-  return true;
+  toast("💬 "+why+"。"+(w?"文面をコピーしました→R-Messeに貼り付けて送信してください":"文面はコピー済みです。R-Messeを開いて貼り付けてください"));
+  if(!quiet){ render(); openOrderDrawer(o.id); }
+  return false;
 }
 // 📨💬 両方（既定）: 文面をコピー＋R-Messeを別タブで開く → そのままメールも自動送信
 async function sendConfirmBoth(){
   const o=getOrder(state.drawer.id); if(!o) return;
   const body=confirmMailBody_();
   if(!body){ toast("先に文面を生成してください"); return; }
-  if(!confirm("同じ文面を2経路でお客様に連絡します。\n\n① メール：お客様の楽天メルアド（From: info@hayazai.com）＝このまま自動送信\n② 顧客問合せ：R-Messeを別タブで開きます（文面はコピー済み）→貼り付けて送信してください\n\nよろしいですか？")) return;
+  if(!confirm("同じ文面を2経路でお客様に連絡します。\n\n① メール：お客様の楽天メルアド宛（From: info@hayazai.com）＝上下の定型文つきで自動送信\n② 顧客問合せ：R-Messeへ自動送信（署名なしの本文だけ）※スレッドが無い/API未許可のときは文面をコピーしてR-Messe画面を開きます\n\nよろしいですか？")) return;
   await openRmesseConfirm(true);
   await sendMailCore_(o, body);
   render(); openOrderDrawer(o.id);
@@ -1683,7 +1710,7 @@ function openOrderDrawer(id){
         <button class="btn ghost" style="flex:1" onclick="openRmesseConfirm()">💬 顧客問合せ（R-Messe）だけ</button>
         <button class="btn ghost" style="flex:1" onclick="sendConfirmMail()">📨 メールだけ</button>
       </div>
-      <div id="mail-send-note" style="display:none;font-size:11px;color:var(--muted);margin-top:6px">両方＝①お客様の楽天メルアド宛に自動送信（From: info@hayazai.com）＋②同じ文面をコピーしてR-Messe（顧客問合せ）を別タブで開く→貼り付けて送信。どの経路でも「配送確認の連絡済み」に自動チェックされます。文面は上のプレビューで編集できます。</div>`:""}
+      <div id="mail-send-note" style="display:none;font-size:11px;color:var(--muted);margin-top:6px">両方＝①お客様の楽天メルアド宛に自動送信（From: info@hayazai.com・上下の定型文つき）＋②顧客問合せ（R-Messe）へAPIで自動送信（チャット形式なので<b>署名・定型文は外した本文だけ</b>）。②はその注文の問い合わせスレッドがある場合のみ自動送信、無ければ文面をコピーしてR-Messe画面を開きます。どの経路でも「配送確認の連絡済み」に自動チェック。文面は上のプレビューで編集できます。</div>`:""}
     </div>`:""}
     ${o.mall==="ichiba"?"":`<div class="sec-t">送り状発行（${esc(shipCarrier(o))}）</div>
     ${o.custType==="法人"?`
