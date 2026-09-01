@@ -1337,17 +1337,17 @@ async function genConfirmMail(){
     let offAddr=(f&&f.officeAddr)||"";
     if(!offAddr && br) offAddr=await seinoBranchAddr(br);   // 営業所検索が間に合わない時はマスタから補完（住所欄の空送信を防ぐ）
     if(!offAddr && br) toast("⚠️ "+br+"支店の住所を取得できませんでした。文面の住所欄を手入力してください");
-    body="（株）林材木店と申します。\nこの度はご注文ありがとうございます。\n\n配送についてご確認したい点がございます。\n\n配送方法で西濃運輸個人様利用（宅配不可支店止め）をお選びいただいております。\n配送先の支店は西濃運輸　"+br+"支店を予定しております。\n住所："+offAddr+"\n送料："+total+"（税込み）\n\n上記の支店と送料で問題ないかご返信をお願い致します。\n送料と支店に問題がなければ、下記注文内容で生産発送をさせていただきます。\n\nお手数ですが、ご返信宜しくお願い致します。\n\n【ご注文内容】\n"+itemsTxt;
+    body="（株）林材木店と申します。\nこの度はご注文ありがとうございます。\n\n配送についてご確認したい点がございます。\n\n配送方法で西濃運輸個人様利用（宅配不可支店止め）をお選びいただいております。\n配送先の支店は西濃運輸　"+br+"支店を予定しております。\n住所："+offAddr+"\n送料："+total+"（税込み）\n\n上記の支店と送料で問題ないかご返信をお願い致します。\n送料と支店に問題がなければ、下記注文内容で生産発送をさせていただきます。\nご返信をいただいてから3〜4日ほどで発送いたします。\n\nお手数ですが、ご返信宜しくお願い致します。\n\n【ご注文内容】\n"+itemsTxt;
   } else {
     // 法人名の抽出（届け先住所に会社名が入っている場合→2番に記載・3番に住所。なければ空白）
     const corp=(String(o.shipAddr||"").match(/(株式会社|有限会社|合同会社|合資会社|（株）|（有）|\(株\)|\(有\))\S*|\S*(工務店|建設|建築|商店|木材店?|製材所?|組合|工業|工房|ｾﾝﾀｰ|センター)/)||[])[0]||"";
-    body="（株）林材木店と申します。\nこの度はご注文ありがとうございます。\n\n配送についてご確認したい点がございます。\n下記の内容をご確認の上、1～5の回答をご返信ください。\n\n\n１.送料："+total+"(税込)\n\n２.配送先の屋号、会社名\n"+corp+"\n\n３.配送先（屋号、会社名の記載がある住所）\n"+(corp?("〒"+(o.shipZip||"")+" "+String(o.shipAddr||"")):"")+"\n\n４.(2階以上の場合)1階引渡しになります\n\n５.(配送先が現場の場合)送料+別途料金が発生します。\n現場卸しの場合はご連絡お願い致します。\n\n\n確認ができ次第、下記注文内容で生産発送をさせていただきます。\nお手数ですが、ご返信宜しくお願い致します。\n\n【ご注文内容】\n"+itemsTxt;
+    body="（株）林材木店と申します。\nこの度はご注文ありがとうございます。\n\n配送についてご確認したい点がございます。\n下記の内容をご確認の上、1～5の回答をご返信ください。\n\n\n１.送料："+total+"(税込)\n\n２.配送先の屋号、会社名\n"+corp+"\n\n３.配送先（屋号、会社名の記載がある住所）\n"+(corp?("〒"+(o.shipZip||"")+" "+String(o.shipAddr||"")):"")+"\n\n４.(2階以上の場合)1階引渡しになります\n\n５.(配送先が現場の場合)送料+別途料金が発生します。\n現場卸しの場合はご連絡お願い致します。\n\n\n確認ができ次第、下記注文内容で生産発送をさせていただきます。\nご返信をいただいてから3〜4日ほどで発送いたします。\nお手数ですが、ご返信宜しくお願い致します。\n\n【ご注文内容】\n"+itemsTxt;
   }
   const box=document.getElementById("mail-preview");
   if(box){ box.value=wrapConfirmMail(o, body); box.style.display="block"; box.style.height="420px"; }
   const sb=document.getElementById("mail-send"), s2=document.getElementById("mail-send2"), sn=document.getElementById("mail-send-note");
   if(sb) sb.style.display="block"; if(s2) s2.style.display="flex"; if(sn) sn.style.display="block";
-  toast(total ? "文面を生成しました。内容を確認して「📨💬 両方に送る」を押してください（片方だけも下のボタンで選べます）" : "⚠️ 送料は別途見積り（北海道/沖縄/離島等）。送料欄を手入力してください");
+  toast(total ? "文面を生成しました。内容を確認して「💬 顧客メッセージで送る」を押してください（両方／メールだけも下のボタンで選べます）" : "⚠️ 送料は別途見積り（北海道/沖縄/離島等）。送料欄を手入力してください");
 }
 // 配送確認の連絡経路は2つ: ①メール（楽天あんしんメルアド宛・GASから自動送信） ②顧客問合せ R-Messe（文面コピー→貼付）
 // 既定は「両方に送る」。片方だけのボタンも残してある。どの経路でも連絡済み✅が立つ。
@@ -1705,12 +1705,12 @@ function openOrderDrawer(id){
       <div class="fare-inline" style="margin-top:8px"></div>
       ${o.mall==="rakuten"?`<button class="btn ghost" style="width:100%;margin-top:8px" onclick="genConfirmMail()">📧 配送確認メール文面を生成</button>
       <textarea id="mail-preview" class="txt" style="display:none;margin-top:8px;font-size:12px;line-height:1.6"></textarea>
-      <button id="mail-send" class="btn primary" style="display:none;width:100%;margin-top:8px" onclick="sendConfirmBoth()">📨💬 内容を確認した → 両方に送る（メール＋顧客問合せ）</button>
+      <button id="mail-send" class="btn primary" style="display:none;width:100%;margin-top:8px" onclick="openRmesseConfirm()">💬 内容を確認した → 顧客メッセージ（R-Messe）で送る</button>
       <div id="mail-send2" style="display:none;gap:6px;margin-top:6px">
-        <button class="btn ghost" style="flex:1" onclick="openRmesseConfirm()">💬 顧客問合せ（R-Messe）だけ</button>
+        <button class="btn ghost" style="flex:1" onclick="sendConfirmBoth()">📨💬 両方（メールも送る）</button>
         <button class="btn ghost" style="flex:1" onclick="sendConfirmMail()">📨 メールだけ</button>
       </div>
-      <div id="mail-send-note" style="display:none;font-size:11px;color:var(--muted);margin-top:6px">両方＝①お客様の楽天メルアド宛に自動送信（From: info@hayazai.com・上下の定型文つき）＋②顧客問合せ（R-Messe）へAPIで自動送信（チャット形式なので<b>署名・定型文は外した本文だけ</b>）。②はその注文の問い合わせスレッドがある場合のみ自動送信、無ければ文面をコピーしてR-Messe画面を開きます。どの経路でも「配送確認の連絡済み」に自動チェック。文面は上のプレビューで編集できます。</div>`:""}
+      <div id="mail-send-note" style="display:none;font-size:11px;color:var(--muted);margin-top:6px">既定＝<b>顧客メッセージ（R-Messe）</b>。チャット形式なので<b>署名・上下の定型文は外した本文だけ</b>を送ります。その注文の問い合わせスレッドがあればAPIで自動送信、無ければ文面をコピーしてR-Messe画面を開きます（新規はRMS受注詳細の「顧客に問い合わせ」から貼り付け）。「両方」はメール（あんしんメルアド宛・定型文つき）も同時に送ります。どの経路でも「配送確認の連絡済み」に自動チェック。文面は上のプレビューで編集できます。</div>`:""}
     </div>`:""}
     ${o.mall==="ichiba"?"":`<div class="sec-t">送り状発行（${esc(shipCarrier(o))}）</div>
     ${o.custType==="法人"?`
