@@ -2120,7 +2120,14 @@ document.addEventListener("DOMContentLoaded",()=>{
   // search
   $("#search").addEventListener("input", debounce(e=>{ state.search=e.target.value; render(); },200));
   // header buttons
-  $("#btn-refresh").onclick=()=>{ if(API_URL){ toast("最新を取得中…"); loadFromServer(); } else { buildData(); render(); toast("再読み込みしました"); } };
+  $("#btn-refresh").onclick=async()=>{
+    if(API_URL){
+      // 画面の再読込だけでなくモール(楽天API/ヤフーAPI/メール)からの取込を実行してから反映する
+      toast("モールから取込中…（少し待ちます）");
+      try{ await fetch(API_URL+"?action=ingest"); }catch(_){ }
+      loadFromServer(); toast("取込→反映しました");
+    } else { buildData(); render(); toast("再読み込みしました"); }
+  };
   $("#btn-theme").onclick=()=>{ const cur=document.documentElement.dataset.theme; const nx=cur==="dark"?"light":"dark"; document.documentElement.dataset.theme=nx; save(LS.theme,nx); };
   $("#btn-settings").onclick=openSettings;
   // fab + scrim
