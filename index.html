@@ -378,7 +378,7 @@ const API_URL = "https://script.google.com/macros/s/AKfycbwxyn-27FkDO0glFdHwqiN6
 
 const MALL = {
   rakuten:{ label:"楽天", cls:"rakuten",
-    orderUrl:"https://order.rms.rakuten.co.jp/",      // RMS 受注管理
+    orderUrl:"https://order-rp.rms.rakuten.co.jp/order-rb/order-list-sc/init",      // RMS 受注管理（※ order.rms.rakuten.co.jp/ は404）
     msgUrl:"https://rmesse.rms.rakuten.co.jp/" },     // R-Messe 問い合わせ（※ハイフン入り r-messe. は存在しないドメイン＝DNSで引けず開けない）
   yahoo:{ label:"Yahoo!", cls:"yahoo",
     orderUrl:"https://pro.store.yahoo.co.jp/",          // ストアクリエイターPro
@@ -1424,9 +1424,11 @@ async function openRmesseConfirm(quiet){
           : (r&&r.code==="not_authorized") ? "問い合わせ管理APIが未許可（RMSでAPI利用申請が必要）"
           : "API送信不可"+((r&&r.error)?"（"+r.error+"）":"");
   await copyMailText_(msg);
-  const w=window.open(MALL.rakuten.msgUrl,"_blank");   // ※コピー→openの順（逆にすると焦点が移りコピーが落ちる）
+  // 注文番号つきなら「顧客に問い合わせ」フォーム（店舗発信・新規スレッド）を直接開く。無ければR-Messe受信箱
+  const rmUrl=o.orderNo ? ("https://rmesse.rms.rakuten.co.jp/merchant_message/"+encodeURIComponent(o.orderNo)+"?ms=20043") : MALL.rakuten.msgUrl;
+  const w=window.open(rmUrl,"_blank");   // ※コピー→openの順（逆にすると焦点が移りコピーが落ちる）
   markMailSent_(o);
-  toast("💬 "+why+"。"+(w?"文面をコピーしました→R-Messeに貼り付けて送信してください":"文面はコピー済みです。R-Messeを開いて貼り付けてください"));
+  toast("💬 "+why+"。"+(w?"文面をコピーしました→開いた「顧客に問い合わせ」フォームの本文に貼り付け、連絡理由を選んで送信してください":"文面はコピー済みです。R-Messeを開いて貼り付けてください"));
   if(!quiet){ render(); openOrderDrawer(o.id); }
   return false;
 }
