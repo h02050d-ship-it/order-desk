@@ -765,9 +765,13 @@ function shipCarrier(o){
   if(/西濃/.test(dm)) return "西濃";            // ヤフーAPIは配送方法に運送会社名が入る（例:「佐川急便1ｍ40枚（宅配）」）
   if(/佐川/.test(dm)) return "佐川";
   if(/日本郵便|ゆうパック|ゆうパケット|メール便/.test(dm)) return "日本郵便";
-  if(/大型/.test(dm)) return "西濃";            // 楽天=大型宅配便
+  // 長さが分かれば長さで決める（910=佐川／1820以上=西濃）。楽天の「大型宅配便」は商品ページ単位の設定で
+  // 15mm/12mm統合ページでは1m品にも付くため、長さより優先しない（2026-09-07・GAS _shipCarrier_ と同じ判定）
+  const mx=itemMaxLen(o);
+  if(mx>0) return mx>=1820 ? "西濃" : "佐川";
+  if(/大型/.test(dm)) return "西濃";            // 楽天=大型宅配便（長さ不明時のみ）
   if(/宅配便/.test(dm)) return "佐川";          // 楽天=宅配便
-  return itemMaxLen(o)>=1820 ? "西濃" : "佐川"; // 未取得は長さで推定：2m系(1820〜)=西濃
+  return "佐川";
 }
 // 配送確認メール・配送確認チェックが必要なのは西濃(2m・支店止め/運賃見積り)のみ。佐川/メール便は不要
 function needsShipConfirm(o){ return shipCarrier(o)==="西濃"; }
