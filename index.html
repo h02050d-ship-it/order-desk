@@ -285,6 +285,10 @@
     .board{grid-template-columns:1fr; gap:10px}
     .col{min-height:auto}
   }
+.mail-warn{margin-top:6px;padding:8px 10px;border:1.5px solid #e6910088;background:#e6910014;border-radius:8px;font-size:12px;line-height:1.5}
+.mail-warn .mail-btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.mail-warn .mail-btns .btn{flex:1 1 auto;font-size:12px;padding:6px 8px}
+.pill.mail-unsure{background:#e6910022;color:#a35a00;border-color:#e6910088}
 </style>
 </head>
 <body>
@@ -1381,16 +1385,60 @@ function messeBody_(){
   const si=t.lastIndexOf(MAIL_SIGNATURE); if(si>=0) t=t.slice(0,si);
   return t.trim();
 }
-function markMailSent_(o){
-  o.mailSent=true; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.mailSent=true;
-  if(API_URL) apiPost({action:"order", id:o.id, mailSent:true});
+// 連絡済み✅は「実際に送れた経路」が分かる時だけ立てる。via = mail(GASメール自動送信) / rmesse_api(R-Messe API) / manual(本人が送信を確認)
+function markMailSent_(o, via){
+  const vias=String(o.mailSentVia||"").split("+").filter(Boolean); if(vias.indexOf(via||"manual")<0) vias.push(via||"manual");
+  o.mailSent=true; o.mailPending=""; o.mailSentVia=vias.join("+");
+  const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv){ sv.mailSent=true; sv.mailPending=""; sv.mailSentVia=o.mailSentVia; }
+  if(API_URL) apiPost({action:"order", id:o.id, mailSent:true, mailPending:"", mailSentVia:o.mailSentVia});
+}
+function mailNow_(){ const d=new Date(), z=n=>String(n).padStart(2,"0"); return (d.getMonth()+1)+"/"+d.getDate()+" "+z(d.getHours())+":"+z(d.getMinutes()); }
+// R-Messeへ文面をコピーして画面を開いた＝まだ送れていない可能性がある。連絡済みにはせず「貼付待ち・未確認」を記録
+function setMailPending_(o){
+  o.mailPending=mailNow_(); const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.mailPending=o.mailPending;
+  if(API_URL) apiPost({action:"order", id:o.id, mailPending:o.mailPending});
+}
+// 配送確認の連絡状態を「本当に送れたか」で表示する。
+// R-Messeは新規スレッドをAPIで作れず、文面コピー→画面貼付の手作業になる＝ログインしていない等で送れていないことがある。
+// そのため貼付ルートでは連絡済み✅を自動で立てず「貼付待ち・未確認」に置き、本人が確認して✅にする。
+function mailStateHTML_(o){
+  if(!(o.mall==="rakuten"&&needsShipConfirm(o)&&o.status==="new")) return "";
+  const via=String(o.mailSentVia||"");
+  if(o.mailSent){
+    if(via) return `<div class="prep-line" style="font-size:11.5px"><span>📧 連絡経路</span><span class="done">${esc(viaLabel_(via))}</span></div>`;
+    // 経路の記録が無い＝旧ロジック（R-Messeに貼り付けただけで✅が立った）の可能性
+    return `<div class="mail-warn">⚠️ 連絡済み✅ですが<b>送信の記録がありません</b>。R-Messeに貼り付けただけで✅になった可能性があります（楽天にログインしていないと送れていません）。
+      <div class="mail-btns"><button class="btn ghost" onclick="openRmesseInbox_()">🔎 R-Messeで送信済みか確認</button><button class="btn ghost" onclick="mailConfirmManual_(true)">✅ 送れていた</button><button class="btn ghost" onclick="mailConfirmManual_(false)">↩ 送れていなかった→未送信に戻す</button></div></div>`;
+  }
+  if(o.mailPending) return `<div class="mail-warn">📋 <b>R-Messe貼り付け待ち・送信未確認</b>（${esc(o.mailPending)} に文面をコピー）<br>R-Messeで送信できたか確認してください。楽天にログインしていないと送れていません。
+      <div class="mail-btns"><button class="btn ghost" onclick="openRmesseInbox_()">🔎 R-Messeで確認</button><button class="btn ghost" onclick="mailConfirmManual_(true)">✅ 送信できた→連絡済み</button><button class="btn ghost" onclick="openRmesseConfirm()">↩ もう一度コピーして開く</button></div></div>`;
+  return "";
+}
+function viaLabel_(via){ return via.split("+").map(v=>({mail:"📨 メール自動送信",rmesse_api:"💬 R-Messe API送信",manual:"✋ 本人が送信を確認"})[v]||v).join(" ＋ "); }
+// R-Messe受信箱を開き、注文番号をコピーしておく（検索欄に貼って店舗発信メッセージの有無を見る）
+async function openRmesseInbox_(){
+  const o=getOrder(state.drawer.id); if(!o) return;
+  if(o.orderNo) await copyMailText_(o.orderNo);
+  window.open(MALL.rakuten.msgUrl,"_blank");
+  toast("注文番号をコピーしました。R-Messeの検索に貼り付けて、店舗からのメッセージが届いているか確認してください");
+}
+function mailConfirmManual_(ok){
+  const o=getOrder(state.drawer.id); if(!o) return;
+  if(ok){ markMailSent_(o,"manual"); toast("✅ 連絡済みにしました（本人が送信を確認）"); }
+  else{
+    o.mailSent=false; o.mailSentVia=""; o.mailPending=mailNow_();
+    const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv){ sv.mailSent=false; sv.mailSentVia=""; sv.mailPending=o.mailPending; }
+    if(API_URL) apiPost({action:"order", id:o.id, mailSent:false, mailSentVia:"", mailPending:o.mailPending});
+    toast("↩ 未送信に戻しました。文面を生成して送り直してください");
+  }
+  render(); openOrderDrawer(o.id);
 }
 // ①メール送信（あんしんメルアド宛・GAS rkSendMail）
 async function sendMailCore_(o, body){
   toast("📨 送信中…");
   try{
     const r=await apiCall({action:"rkSendMail", id:o.id, orderNo:o.orderNo, subject:"【要返信】ご注文・配送の確認（林材木店）", body});
-    if(r.ok){ markMailSent_(o); toast("📨 メールを送信しました（連絡済み✅）"); return true; }
+    if(r.ok){ markMailSent_(o,"mail"); toast("📨 メールを送信しました（連絡済み✅）"); return true; }
     toast("送信失敗: "+(r.error||"")); return false;
   }catch(e){ toast("通信エラー"); return false; }
 }
@@ -1414,7 +1462,7 @@ async function openRmesseConfirm(quiet){
   try{ r=await apiCall({action:"rkMesseSend", id:o.id, orderNo:o.orderNo, message:msg}); }
   catch(e){ r={ok:false, code:"net", error:"通信エラー"}; }
   if(r && r.ok){
-    markMailSent_(o);
+    markMailSent_(o,"rmesse_api");
     toast("💬 顧客問合せ（R-Messe）で送信しました（連絡済み✅）");
     if(!quiet){ render(); openOrderDrawer(o.id); }
     return true;
@@ -1426,8 +1474,8 @@ async function openRmesseConfirm(quiet){
   // 注文番号つきなら「顧客に問い合わせ」フォーム（店舗発信・新規スレッド）を直接開く。無ければR-Messe受信箱
   const rmUrl=o.orderNo ? ("https://rmesse.rms.rakuten.co.jp/merchant_message/"+encodeURIComponent(o.orderNo)+"?ms=20043") : MALL.rakuten.msgUrl;
   const w=window.open(rmUrl,"_blank");   // ※コピー→openの順（逆にすると焦点が移りコピーが落ちる）
-  markMailSent_(o);
-  toast("💬 "+why+"。"+(w?"文面をコピーしました→開いた「顧客に問い合わせ」フォームの本文に貼り付け、連絡理由を選んで送信してください":"文面はコピー済みです。R-Messeを開いて貼り付けてください"));
+  setMailPending_(o);   // 貼り付けは手作業＝送れたかはまだ分からない。連絡済み✅にはせず「貼付待ち・未確認」にする（本人が送信を確認して✅）
+  toast("💬 "+why+"。"+(w?"文面をコピーしました→開いた「顧客に問い合わせ」フォームの本文に貼り付け、連絡理由を選んで送信してください":"文面はコピー済みです。R-Messeを開いて貼り付けてください")+"。送信できたら注文の『✅ 送信できた』を押してください（それまで連絡済みにはなりません）");
   if(!quiet){ render(); openOrderDrawer(o.id); }
   return false;
 }
@@ -1569,6 +1617,8 @@ function orderCard(o){
       ${o.mall==="ichiba"?(('<span class="pill '+(o.docType==="注文"?"doc-order":o.docType==="見積り"?"doc-quote":"doc-check")+'">'+(o.docType==="注文"?"📝 注文":o.docType==="見積り"?"💰 見積り":o.docType==="対象外"?"🚫 対象外":"❓ 要確認")+'</span>')+('<span class="pill">'+(o.src==="mail"?"📧 メール":"📠 FAX")+'</span>')):""}
       ${(o.mall!=="ichiba"&&o.status==="new")?workflowPillHTML(o):""}
       ${o.hasMsg?'<span class="pill msg">💬 問い合わせ</span>':''}
+      ${(o.mall==="rakuten"&&o.status==="new"&&needsShipConfirm(o)&&!o.mailSent&&o.mailPending)?'<span class="pill mail-unsure">📋 R-Messe貼付待ち・未確認</span>':''}
+      ${(o.mall==="rakuten"&&o.status==="new"&&needsShipConfirm(o)&&o.mailSent&&!o.mailSentVia)?'<span class="pill mail-unsure">⚠️ 連絡✅ 送信記録なし</span>':''}
       ${o.memo?'<span class="pill memo">📝 メモ</span>':''}
     </div>
     ${(o.mall==="ichiba"&&!o.kakouAdded&&(o.status==="new"||o.status==="preparing")&&o.docType!=="対象外")?`<button class="nextbtn" data-kakou="${o.id}">🪵 加工予定表に追加${kakouRowsFor(o).length?"（"+kakouRowsFor(o).length+"行）":"（手入力）"}</button>`:''}
@@ -1699,7 +1749,7 @@ function openOrderDrawer(id){
     <div class="prep-box ${kakouReady(o)?'ok':''}">
       <div class="prep-line"><span>💰 支払</span><span class="${isPaidOk(o)?'done':'wait'}">${isPaidOk(o)?'✅ 確認済':'⏳ 入金待ち'}</span></div>
       ${(needsShipConfirm(o)&&o.status==="new")?`
-      ${o.mall==="rakuten"?`<label class="prep-check"><input type="checkbox" id="o-mailsent" ${o.mailSent?'checked':''} onchange="toggleMailSent()"> 📧 配送確認の連絡済み（メール／顧客問合せで送料・お届けを案内した）</label>`:""}
+      ${o.mall==="rakuten"?`<label class="prep-check"><input type="checkbox" id="o-mailsent" ${o.mailSent?'checked':''} onchange="toggleMailSent()"> 📧 配送確認の連絡済み（メール／顧客問合せで送料・お届けを案内した）</label>`+mailStateHTML_(o):""}
       <label class="prep-check"><input type="checkbox" id="o-shipconf" ${o.shipConfirmed?'checked':''} onchange="toggleShipConfirm()"> 🚚 配送確認済み（送料・営業所・お届け方法をお客様と確認した）</label>`
       :needsShipConfirm(o)?`<div class="prep-line"><span>🚚 配送</span><span class="done">✅ 確認済</span></div>`
       :`<div class="prep-line"><span>🚚 配送</span><span class="done">✅ ${esc(shipCarrier(o))}（確認不要）</span></div>`}
@@ -1843,7 +1893,9 @@ function toggleShipConfirm(){
 function toggleMailSent(){
   const o=getOrder(state.drawer.id); if(!o) return;
   o.mailSent=$("#o-mailsent").checked;
-  if(API_URL) apiPost({action:"order", id:o.id, mailSent:o.mailSent});
+  o.mailSentVia=o.mailSent?"manual":""; if(o.mailSent) o.mailPending="";
+  const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv){ sv.mailSent=o.mailSent; sv.mailSentVia=o.mailSentVia; sv.mailPending=o.mailPending; }
+  if(API_URL) apiPost({action:"order", id:o.id, mailSent:o.mailSent, mailSentVia:o.mailSentVia, mailPending:o.mailPending||""});
   render(); openOrderDrawer(o.id);
   toast(o.mailSent?"配送確認メール送信済みにしました":"未送信に戻しました");
 }
