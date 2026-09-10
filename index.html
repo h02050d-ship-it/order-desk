@@ -552,7 +552,7 @@ function apiPost(body){
 function saveOrderOverlay(o){
   if(API_URL){
     const body={action:"order", id:o.id, status:o.status, memo:o.memo, tracking:o.tracking, customer:o.customer};
-    ["corpName","corpZip","corpAddr","dueOverride","shipDate"].forEach(k=>{ if(o[k]!==undefined) body[k]=o[k]; });  // 法人届け先・合意着日・発送日（欄が無い注文では送らない=消さない）
+    ["corpName","corpZip","corpAddr","dueOverride","shipDate","shipTel"].forEach(k=>{ if(o[k]!==undefined) body[k]=o[k]; });  // 法人届け先・合意着日・発送日（欄が無い注文では送らない=消さない）
     apiPost(body); return; }
   const ov = load(LS.oOverlay, {});
   ov[o.id] = {status:o.status, memo:o.memo, tracking:o.tracking, customer:o.customer};
@@ -694,11 +694,13 @@ function needsFreight(o){ return (o.mall==="rakuten"||o.mall==="yahoo") && itemM
 // 運賃ツール連携URL（届け先住所＋都道府県＋長さ区分＋束数を渡して自動計算・営業所検索）
 const FARE_URL="https://h02050d-ship-it.github.io/fare-calculator/";
 function lengthClass(len){ return len>=4000?4:len>=3000?3:len>=1820?2:1; }
-function sokuTaba(o){ let t=0; (o.items||[]).forEach(it=>{const p=parseItem(it.name); if(!p.dim) return; const d=p.dim.split("×"); const len=Number(d[2])||0; const per=parseInt(p.qty)||0,n=Number(it.qty)||1,tot=per*n; if(!tot) return; t+=Math.ceil(tot/(len<1820?20:10));}); return t||1; }
+// 2m系以上の1束(=1個口)あたり枚数。加工予定表QTY_BY_LENGTHと同じ: 1820=10/2000=8/3000=10/4000=8
+function perBundle(len){ return len>=3640?8:len>=2730?10:len>=1900?8:10; }
+function sokuTaba(o){ let t=0; (o.items||[]).forEach(it=>{const p=parseItem(it.name); if(!p.dim) return; const d=p.dim.split("×"); const len=Number(d[2])||0; const per=parseInt(p.qty)||0,n=Number(it.qty)||1,tot=per*n; if(!tot) return; t+=Math.ceil(tot/(len<1820?20:perBundle(len)));}); return t||1; }
 // 長さクラス(1m/2m/3m/4m)別の束数を集計（混載運賃の正確計算用）
 function sokuTabaByLen(o){
   const by={1:0,2:0,3:0,4:0};
-  (o.items||[]).forEach(it=>{const p=parseItem(it.name); if(!p.dim) return; const d=p.dim.split("×"); const len=Number(d[2])||0; const per=parseInt(p.qty)||0,n=Number(it.qty)||1,tot=per*n; if(!tot) return; by[lengthClass(len)]+=Math.ceil(tot/(len<1820?20:10));});
+  (o.items||[]).forEach(it=>{const p=parseItem(it.name); if(!p.dim) return; const d=p.dim.split("×"); const len=Number(d[2])||0; const per=parseInt(p.qty)||0,n=Number(it.qty)||1,tot=per*n; if(!tot) return; by[lengthClass(len)]+=Math.ceil(tot/(len<1820?20:perBundle(len)));});
   return by;
 }
 function fareUrl(o){
@@ -841,7 +843,7 @@ function kakouRowsFor(o){
     if(!total) return;
     const len=Number(d[2])||0;
     let qty,planned;
-    if(len>=1820){ qty=10; planned=Math.ceil(total/10); }                                // 2m系: 10枚1個口（20枚1セット→予定2）
+    if(len>=1820){ qty=perBundle(len); planned=Math.ceil(total/qty); }                    // 2m系: 長さ別入数(1820=10/2000=8/3000=10/4000=8)で1束1個口
     else { planned=Math.max(1,Math.ceil(total/40)); qty=Math.ceil(total/planned); }      // 1m系: 40枚まで1個口
     const opt=String(it.opt||"");
     const grade=kakouGradeOf(p.fushi,p.grade);
@@ -1020,7 +1022,7 @@ async function kakouApplyOrderInfo(o){
 // 送り状の総個口（全商品分の合計）
 function kouguchiTotal(o){
   let k=0;
-  (o.items||[]).forEach(it=>{ const p=parseItem(it.name); if(!p.dim) return; const d=p.dim.split("×"); const len=Number(d[2])||0; const per=parseInt(p.qty)||0, n=Number(it.qty)||1, total=per*n; if(!total) return; k += len>=1820?Math.ceil(total/10):Math.max(1,Math.ceil(total/40)); });
+  (o.items||[]).forEach(it=>{ const p=parseItem(it.name); if(!p.dim) return; const d=p.dim.split("×"); const len=Number(d[2])||0; const per=parseInt(p.qty)||0, n=Number(it.qty)||1, total=per*n; if(!total) return; k += len>=1820?Math.ceil(total/perBundle(len)):Math.max(1,Math.ceil(total/40)); });
   return k||1;
 }
 // 送り状発行用の宛先情報をコピー（西濃/佐川への入力・Claude依頼用）
@@ -1087,12 +1089,13 @@ async function seinoIssueFromDrawer(){
   } else {
     atesakiBlock="\n〒"+(corpZip||o.shipZip||"?")+" "+(addr||"住所未取得");
   }
-  if(!confirm("【西濃で送り状発行＋印刷】🟢本番\n\n宛名: "+atena+atesakiBlock+"\n\n個口: "+kouguchiTotal(o)+"個口"+dateNote+(dueShow?("\n⏰ 着指定: "+dueShow+"（送り状に配達指定で反映）"+(dueOv&&dueOv!==o.deliveryDate?" ⚠️変更あり":"")):"")+"\n\n西濃へ本番の出荷登録をし、会社PCの HL-L2375DW でA5自動印刷します。よろしいですか？")) return;
+  if(!confirm("【西濃で送り状発行＋印刷】🟢本番\n\n宛名: "+atena+atesakiBlock+"\n📞 "+((document.getElementById("seino-tel")?.value||o.shipTel||"").trim()||"電話なし")+"\n\n個口: "+kouguchiTotal(o)+"個口"+dateNote+(dueShow?("\n⏰ 着指定: "+dueShow+"（送り状に配達指定で反映）"+(dueOv&&dueOv!==o.deliveryDate?" ⚠️変更あり":"")):"")+"\n\n西濃へ本番の出荷登録をし、会社PCの HL-L2375DW でA5自動印刷します。よろしいですか？")) return;
   toast("西濃で発行中…");
   try{
     const u=new URL(API_URL); u.searchParams.set("action","seinoissue"); u.searchParams.set("id",o.id); if(window._seinoShipDate) u.searchParams.set("date",window._seinoShipDate);
     if(corpName){ u.searchParams.set("name",atena); u.searchParams.set("corp",corpName); u.searchParams.set("zip",corpZip); u.searchParams.set("addr",corpAddr); }  // 宛名=楽天(株)◯◯形式・corp=素の法人名(保存用)
     if(dueOv&&dueOv!==o.deliveryDate) u.searchParams.set("due",dueOv);  // 着指定の変更（合意済み）
+    const telOv=(document.getElementById("seino-tel")?.value||"").trim().replace(/[^\d]/g,""); if(telOv&&telOv!==String(o.shipTel||"").replace(/[^\d]/g,"")) u.searchParams.set("tel",telOv);  // 届け先電話の手修正（保存され以後も使う）
     u.searchParams.set("email",CRED.email); u.searchParams.set("pass",CRED.pass);
     const res=await fetch(u.toString()).then(r=>r.json());
     if(res.ok){
@@ -1750,6 +1753,9 @@ function openOrderDrawer(id){
       <label style="font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:6px"><input type="checkbox" id="seino-addr-ok"> 届け先住所に間違いがないことを確認した（違う場合は上で修正）</label>`:""}
     </div>`:""}
     ${shipCarrier(o)==="西濃"?`
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-size:11.5px;font-weight:800;white-space:nowrap">📞 届け先電話</span>
+        <input class="txt" id="seino-tel" value="${esc(o.shipTel||"")}" placeholder="送り状に印字する電話番号（携帯可）" style="flex:1" inputmode="tel" /></div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">お客様の携帯など別の番号にする場合はここで直す（保存・発行でこの番号が西濃に登録されます）。</div>
       ${o.seinoOkurijoNo?`<div class="prep-line"><span>🚚 西濃送り状</span><span class="done">✅ 発行済 ${esc(o.seinoOkurijoNo)}${o.seinoNotified?" ・楽天通知済":""}</span></div>
       <div style="display:flex;gap:8px;margin:6px 0">
         <button class="btn ghost sm" style="flex:1" onclick="window.open('https://track.seino.co.jp/kamotsu/GempyoNoShokai.do?GNPNO1=${esc(o.seinoOkurijoNo)}','_blank')">📍 配達状況を追跡</button>
@@ -1826,6 +1832,7 @@ function saveOrderFromDrawer(){
   if(_g("seino-corp-name")) o.corpName=_g("seino-corp-name").value.trim();
   if(_g("seino-corp-zip"))  o.corpZip=_g("seino-corp-zip").value.trim();
   if(_g("seino-corp-addr")) o.corpAddr=_g("seino-corp-addr").value.trim();
+  if(_g("seino-tel"))       o.shipTel=_g("seino-tel").value.trim();  // 届け先電話（携帯へ差替え等・送り状に印字）
   if(_g("seino-due"))       o.dueOverride=_g("seino-due").value.trim();
   if(_g("seino-date"))      o.shipDate=_g("seino-date").value.trim();  // 発送日（加工予定表の納期に反映）
   window._drawerSnap=null;  // 保存済み→閉じる時の未保存確認を出さない
