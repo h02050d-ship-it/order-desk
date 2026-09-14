@@ -897,6 +897,22 @@ async function kakouNotesFor(o){
     return [...new Set(notes)];
   }catch(err){ return []; }
 }
+// 発送処理(楽天/ヤフー・取消不可)の前に、加工予定表のこの注文の行(od_注文ID_*)が製造完了(製造順9以上 or アーカイブ)か確認する。
+// 行が無い／予定表に接続できない時は止めない(fail-open)。未完了なら confirm で止める（2026-09-14）
+async function kakouShipGuard_(o){
+  try{
+    if(!kakouDb || !kakouAuthed) return true;
+    const snap=await kakouDb.ref("items").once("value");
+    const items=snap.val()||{};
+    const pre=("od_"+String(o.id||o.orderNo)).replace(/[.#$/\[\]:]/g,"_");
+    const rows=Object.keys(items).filter(k=>k===pre||k.indexOf(pre+"_")===0).map(k=>items[k]).filter(e=>e&&typeof e==="object");
+    if(!rows.length) return true;
+    const notDone=rows.filter(r=>!((parseInt(r.order||"0",10)||0)>=9 || String(r.archived||"")==="1"));
+    if(!notDone.length) return true;
+    const ord=[...new Set(notDone.map(r=>String(r.order||"-")))].join("・");
+    return confirm("⚠️ 加工予定表ではまだ製造完了になっていません（製造順"+ord+"）。\n\n"+notDone.map(r=>"・"+(r.customer||"")+" "+(r.grade||"")+" "+(r.length?Math.round(Number(r.length)/100)/10+"m":"")+" "+(r.planned||"")+"口").join("\n")+"\n\n本当に発送処理しますか？");
+  }catch(e){ return true; }
+}
 function kakouDupOf_(row, existing){
   const sur=String(row.customer||"").replace(/様$/,"");
   if(!sur) return null;
@@ -1097,14 +1113,22 @@ async function seinoIssueFromDrawer(){
     if(dueOv&&dueOv!==o.deliveryDate) u.searchParams.set("due",dueOv);  // 着指定の変更（合意済み）
     const telOv=(document.getElementById("seino-tel")?.value||"").trim().replace(/[^\d]/g,""); if(telOv&&telOv!==String(o.shipTel||"").replace(/[^\d]/g,"")) u.searchParams.set("tel",telOv);  // 届け先電話の手修正（保存され以後も使う）
     u.searchParams.set("email",CRED.email); u.searchParams.set("pass",CRED.pass);
-    const res=await fetch(u.toString()).then(r=>r.json());
+    let res=await fetch(u.toString()).then(r=>r.json());
+    // 加工予定表との個口突合(GAS seinoIssue_ の _seinoKakouCheck_): 合わない時はここで止まる。承知なら ackKakou=1 で再送（2026-09-14）
+    if(!res.ok && res.error==="kakouMismatch"){
+      const k=res.kosu||kouguchiTotal(o);
+      const rows=(res.rows||[]).map(r=>"・"+(r.customer||"")+" "+r.planned+"口（"+(r.grade||"")+" "+(r.length?Math.round(Number(r.length)/100)/10+"m":"")+"）").join("\n");
+      if(!confirm("⚠️ 加工予定表と個口が合いません\n\n注文の個口: "+k+"口\n\n加工予定表の本日の西濃出荷:\n"+(rows||"（なし）")+"\n\n西濃の送り状はあとから直せません。加工予定表の口数を見直してください。\n加工予定表のほうが違う（別便・追加分など）なら、このまま"+k+"口で登録できます。\n\nこのまま"+k+"口で登録しますか？")){ toast("発行を中止しました。加工予定表の口数を確認してください"); return; }
+      u.searchParams.set("ackKakou","1");
+      res=await fetch(u.toString()).then(r=>r.json());
+    }
     if(res.ok){
       o.seinoOkurijoNo=res.okurijoNo; toast("✅ 送り状番号 "+res.okurijoNo+" 発行。HL-L2375DWで印刷します（数十秒）");
       if(corpName){ o.corpName=corpName; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv) sv.corpName=corpName; }  // カード名に法人名を併記
       // 発送処理(楽天/ヤフー通知)はここでは行わない＝出荷一覧表「本日出す」一括の流れで実施（本人指示2026-07-23）
       closeDrawer(); loadFromServer();
     }
-    else { toast("発行失敗: "+(res.error||res.raw||"")); }
+    else { toast("発行失敗: "+(res.error||"")+(res.message?(" "+res.message):"")+(res.raw?(" "+res.raw):"")); }
   }catch(e){ toast("通信エラー"); }
 }
 function kakouRegisterNow(id){ // 手動登録（ドロワー=引数なし / カードの🪵ボタン=id指定）→ 編集つき確認画面
@@ -1879,6 +1903,7 @@ async function rakutenShipFromDrawer(){
   const o=getOrder(state.drawer.id); if(!o) return;
   const carrier=$("#rk-carrier").value, tn=$("#rk-track").value.trim(), date=$("#rk-date").value;
   if(!tn){ toast("送り状番号を入力してください"); return; }
+  if(!(await kakouShipGuard_(o))) return;   // 加工予定表が製造完了でなければ止める
   if(!confirm("楽天に発送処理を送信します。\n\n・お客様へ「発送完了メール」が自動送信されます\n・注文が「発送済」になります\n\nよろしいですか？")) return;
   toast("楽天へ送信中…");
   try{ const r=await apiCall({action:"rakutenShip", id:o.id, orderNo:o.orderNo, carrierCode:carrier, trackingNumber:tn, shippingDate:date});
@@ -1889,6 +1914,7 @@ async function rakutenShipFromDrawer(){
 async function yahooShipFromDrawer(){
   const o=getOrder(state.drawer.id); if(!o) return;
   const carrier=$("#yh-carrier").value, tn=$("#yh-track").value.trim(), date=$("#yh-date").value;
+  if(!(await kakouShipGuard_(o))) return;   // 加工予定表が製造完了でなければ止める
   if(!confirm("ヤフーに発送処理を送信します。\n\n・お客様へ「発送完了通知」が自動送信されます\n・注文が「発送済」になります\n\nよろしいですか？")) return;
   toast("ヤフーへ送信中…");
   try{ const r=await apiCall({action:"yahooShip", id:o.id, orderNo:o.orderNo, carrierCode:carrier, trackingNumber:tn, shippingDate:date});
