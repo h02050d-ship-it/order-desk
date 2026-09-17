@@ -1205,8 +1205,8 @@ function _kakouPrefillRows_(o){
     b.due=o.dueOverride||o.deliveryDate||"";  // 納期＝着指定日があれば初期表示
     if(o.mall==="ichiba" && o.reqDue){          // 発注書の納期(納期ウォッチ 2026-09-17): 自社/引取は引渡し日=納期なので出荷日に入れる。運送便は発送日が別なので備考だけ
       if(!b.due && (b.carrier==="自社"||b.carrier==="引取")) b.due=o.reqDue;
-      const _nk="納期"+String(o.reqDue).slice(5).replace("-","/")+(o.reqDest?" "+o.reqDest:"");
-      b.remark=b.remark?(b.remark.indexOf("納期")>=0?b.remark:_nk+" "+b.remark):_nk;
+      const _nk=String(o.reqDue).slice(5).replace(/^0/,"").replace("-0","-").replace("-","/")+"着指定"+(o.reqDest?" "+o.reqDest:"");   // 加工予定表のguessChakuが読む「9/17着指定」形式
+      b.remark=b.remark?(/着指定|納期/.test(b.remark)?b.remark:_nk+" "+b.remark):_nk;
     }
     const sd=_kakouAutoSD_(b); b.seal=sd.seal; b.danball=sd.danball;
     out.push(b);
