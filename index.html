@@ -1203,6 +1203,11 @@ function _kakouPrefillRows_(o){
     if(o.mall==="ichiba" && bund<=10 && !b.carrier) b.carrier="西濃";   // 10束以下は西濃を既定
     if(o.mall==="ichiba" && bund>=20 && !b.carrier) b.carrier="内藤";  // 数量20以上は内藤を既定（自社等の既定があれば尊重）
     b.due=o.dueOverride||o.deliveryDate||"";  // 納期＝着指定日があれば初期表示
+    if(o.mall==="ichiba" && o.reqDue){          // 発注書の納期(納期ウォッチ 2026-09-17): 自社/引取は引渡し日=納期なので出荷日に入れる。運送便は発送日が別なので備考だけ
+      if(!b.due && (b.carrier==="自社"||b.carrier==="引取")) b.due=o.reqDue;
+      const _nk="納期"+String(o.reqDue).slice(5).replace("-","/")+(o.reqDest?" "+o.reqDest:"");
+      b.remark=b.remark?(b.remark.indexOf("納期")>=0?b.remark:_nk+" "+b.remark):_nk;
+    }
     const sd=_kakouAutoSD_(b); b.seal=sd.seal; b.danball=sd.danball;
     out.push(b);
   });
@@ -1601,6 +1606,7 @@ function orderCard(o){
       ${o.status==="shipped"?'<span class="pill ship-wait">📦 引渡し未完了</span>':''}
       ${o.remarks?'<span class="pill memo memo-on" title="備考: '+esc(o.remarks)+'">📝 備考あり</span>':''}
       ${(o.dueOverride||o.deliveryDate)?'<span class="pill date-spec">⏰ '+esc(o.dueOverride||o.deliveryDate)+' 着指定'+((o.dueOverride&&o.dueOverride!==o.deliveryDate)?'(変更)':'')+'</span>':''}
+      ${(o.mall==="ichiba"&&o.reqDue)?'<span class="pill date-spec" title="発注書・メールから読み取った納期(納期ウォッチが加工予定表と突合します)">📅 納期 '+esc(String(o.reqDue).slice(5).replace("-","/"))+(o.reqDest?' '+esc(o.reqDest):'')+'</span>':''}
       ${o.mall==="ichiba"?(('<span class="pill '+(o.docType==="注文"?"doc-order":o.docType==="見積り"?"doc-quote":"doc-check")+'">'+(o.docType==="注文"?"📝 注文":o.docType==="見積り"?"💰 見積り":o.docType==="対象外"?"🚫 対象外":"❓ 要確認")+'</span>')+('<span class="pill">'+(o.src==="mail"?"📧 メール":"📠 FAX")+'</span>')):""}
       ${(o.mall!=="ichiba"&&o.status==="new")?workflowPillHTML(o):""}
       ${o.hasMsg?'<span class="pill msg">💬 問い合わせ</span>':''}
