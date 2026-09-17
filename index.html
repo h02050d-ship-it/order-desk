@@ -1377,6 +1377,7 @@ async function genConfirmMail(){
   const total=(f&&f.total)?f.total:"";
   const itemsTxt=(o.items||[]).map(it=>"・"+cleanItem(it.name)+(it.opt?"（"+String(it.opt).replace(/\s*\/\s*/g,"・")+"）":"")+" ×"+it.qty).join("\n");  // オプション(カット/塗装/厚さ等)も記載
   let body="";
+  if(!o.custType) toast("⚠️ 個人/法人が未選択の注文です。法人向け(1〜5確認)の文面を出しています。個人様なら支店止めの文面に直してください");
   if(o.custType==="個人"){
     const br=String((f&&f.officeName)||o.branch||"").replace(/営業所$|支店$/,"");
     let offAddr=(f&&f.officeAddr)||"";
@@ -1595,7 +1596,7 @@ function orderCard(o){
     <div class="items">${itemsSummaryHTML(o.items)}</div>
     ${(o.mall==="ichiba"&&o.summary)?'<div class="i-sum">🤖 '+esc(String(o.summary).slice(0,70))+'</div>':''}
     <div class="flagrow">
-      ${o.custType?'<span class="pill cust-'+(o.custType==="法人"?"corp":"indiv")+'">'+(o.custType==="法人"?"🏢 法人":("🏠 個人"+(shipCarrier(o)==="西濃"?(o.branch?"・<b>"+esc(o.branch)+"支店止め</b>":"<b>（支店止め）</b>"):"（宅配）")))+'</span>':''}
+      ${o.custType?'<span class="pill cust-'+(o.custType==="法人"?"corp":"indiv")+'">'+(o.custType==="法人"?"🏢 法人":("🏠 個人"+(shipCarrier(o)==="西濃"?(o.branch?"・<b>"+esc(o.branch)+"支店止め</b>":"<b>（支店止め）</b>"):"（宅配）")))+'</span>':''}${(!o.custType&&o.mall!=="ichiba"&&shipCarrier(o)==="西濃")?'<span class="pill" title="お客様が個人様/法人様を選んでいません。推定はせず、備考にも支店止めは書きません(2026-09-17)">❓ 個人/法人 未選択</span>':''}
       ${o.mall!=="ichiba"?'<span class="pill">🚚 '+esc(shipCarrier(o))+'</span>':''}
       ${o.status==="shipped"?'<span class="pill ship-wait">📦 引渡し未完了</span>':''}
       ${o.remarks?'<span class="pill memo memo-on" title="備考: '+esc(o.remarks)+'">📝 備考あり</span>':''}
@@ -1704,6 +1705,7 @@ function openOrderDrawer(id){
       <span class="k">受注日時</span><span class="v">${esc(o.date)}</span>
       ${o.deliveryDate?`<span class="k">お届け日指定</span><span class="v" style="color:#c0392b;font-weight:800">⏰ ${esc(o.deliveryDate)}</span>`:""}
       ${o.custType?`<span class="k">配送区分</span><span class="v">${o.custType==="法人"?"🏢 法人（宅配可）":(shipCarrier(o)==="西濃"?"🏠 個人（最寄り支店止め）":"🏠 個人（宅配）")}</span>`:""}
+      ${(!o.custType&&o.mall!=="ichiba"&&shipCarrier(o)==="西濃")?`<span class="k">配送区分</span><span class="v">❓ 未選択（お客様が個人/法人を選んでいません。支店止めかどうかは確認が要ります・備考には書きません）</span>`:""}
       ${o.deliveryMethod?`<span class="k">配送方法</span><span class="v">${esc(o.deliveryMethod)}</span>`:""}
     </div>
     ${(o.remarks && !(o.mall==="ichiba" && o.src==="mail"))?`<div class="remarks-box"><b>📝 お客様備考</b>\n${esc(o.remarks)}</div>`:""}
