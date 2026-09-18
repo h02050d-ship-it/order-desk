@@ -537,15 +537,19 @@ async function loadFromServer(){
     SERVER.orders=data.orders||[]; SERVER.inquiries=data.inquiries||[]; SERVER.templates=data.templates||[]; SERVER.loaded=true;
     save(LS.serverCache, {orders:SERVER.orders, inquiries:SERVER.inquiries, templates:SERVER.templates});
     buildData(); render();
-    const upd=$("#h-upd"); if(upd) upd.textContent="更新 "+new Date().toTimeString().slice(0,5);
+    const upd=$("#h-upd"); if(upd){ upd.textContent="更新 "+new Date().toTimeString().slice(0,5); upd.style.color=""; }
     autoKakouSync(); // 加工OKになった注文を加工予定表へ自動登録
-  }catch(e){ toast("サーバ取得に失敗（オフライン表示）"); }
+  }catch(e){ toast("サーバ取得に失敗（前回取得分を表示中）"); const upd=$("#h-upd"); if(upd){ upd.textContent="⚠ 更新失敗 "+new Date().toTimeString().slice(0,5)+"（前回分表示中）"; upd.style.color="#c0392b"; } }
 }
+// 2026-09-18: 書込は投げっぱなしで、通信失敗すると数分後の自動更新で黙って元に戻っていた → 失敗をトーストで知らせる
 function apiPost(body){
   if(!API_URL || !CRED) return;
   try{
     fetch(API_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body:JSON.stringify(Object.assign({email:CRED.email, pass:CRED.pass}, body))}).catch(()=>{});
+      body:JSON.stringify(Object.assign({email:CRED.email, pass:CRED.pass}, body))})
+      .then(r=>r.json().catch(()=>({ok:true})))
+      .then(j=>{ if(j && j.ok===false) toast("⚠ 保存できませんでした: "+(j.error||"")+"（次の自動更新で元に戻ります）"); })
+      .catch(()=>{ toast("⚠ 保存できませんでした（通信）。次の自動更新で元に戻るので、もう一度操作してください"); });
   }catch(e){}
 }
 
