@@ -951,7 +951,7 @@ async function autoKakouSync(){
   _kakouBusy=true;
   try{
     // 注文が入った段階で登録（加工OK前でも）。未確認は実際列に「支払確認/配送確認」表示、加工OKで「-」
-    const active=state.orders.filter(o=>!isTestOrder(o) && o.mall!=="ichiba" && (o.status==="new"||o.status==="preparing") && !o.tracking && kakouRowsFor(o).length); // テスト・送り状あり(加工済)・市場(人間チェック必須)は除外
+    const active=state.orders.filter(o=>!isTestOrder(o) && o.mall!=="ichiba" && o.mall!=="yahoo" && (o.status==="new"||o.status==="preparing") && !o.tracking && kakouRowsFor(o).length); // テスト・送り状あり(加工済)・市場(人間チェック必須)・ヤフー(2026-09-29 自動入力オフ)は除外
     const inserts=active.filter(o=>!o.kakouAdded);
     for(const o of inserts){
       const r=await kakouWrite_(o);
@@ -1020,7 +1020,7 @@ async function kakouUpdateStatus_(o){
 // ドロワー保存時: 法人名(取引先)・発送日(納期)・着日(備考の着指定)を加工予定表の既存行へ即反映。
 // 備考は「MM/DD着指定」の部分だけ書き換え、スタッフの追記(送り状FAX等)は温存する
 async function kakouApplyOrderInfo(o){
-  if(!kakouDb || !kakouAuthed) return;
+  if(!kakouDb || !kakouAuthed || o.mall==="yahoo") return;   // ヤフーは加工予定表へ自動入力しない(2026-09-29)
   const dueTok=(o.dueOverride||o.deliveryDate)?String(o.dueOverride||o.deliveryDate).slice(5,10).replace("-","/")+"着指定":"";
   for(const r of kakouRowsFor(o)){
     try{
