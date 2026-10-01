@@ -541,6 +541,7 @@ async function loadFromServer(){
     buildData(); render();
     const upd=$("#h-upd"); if(upd){ upd.textContent="更新 "+new Date().toTimeString().slice(0,5); upd.style.color=""; }
     autoKakouSync(); // 加工OKになった注文を加工予定表へ自動登録
+    seinoUrbanFaxFromHash(); // 確認メールのリンク(#seinofax=)から来た時は該当注文のFAX原稿を開く
   }catch(e){ toast("サーバ取得に失敗（前回取得分を表示中）"); const upd=$("#h-upd"); if(upd){ upd.textContent="⚠ 更新失敗 "+new Date().toTimeString().slice(0,5)+"（前回分表示中）"; upd.style.color="#c0392b"; } }
 }
 // 2026-09-18: 書込は投げっぱなしで、通信失敗すると数分後の自動更新で黙って元に戻っていた → 失敗をトーストで知らせる
@@ -1790,6 +1791,7 @@ function openOrderDrawer(id){
       </div>
       <label style="font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:6px"><input type="checkbox" id="seino-addr-ok"> 届け先住所に間違いがないことを確認した（違う場合は上で修正）</label>`:""}
     </div>`:""}
+    ${seinoUrbanFaxBoxHTML(o)}
     ${shipCarrier(o)==="西濃"?`
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="font-size:11.5px;font-weight:800;white-space:nowrap">📞 届け先電話</span>
         <input class="txt" id="seino-tel" value="${esc(o.shipTel||"")}" placeholder="送り状に印字する電話番号（携帯可）" style="flex:1" inputmode="tel" /></div>
@@ -1935,6 +1937,68 @@ async function yahooShipFromDrawer(){
     if(r.ok){ toast("ヤフーに発送処理を送信しました"); closeDrawer(); loadFromServer(); }
     else toast("失敗: "+rkMsg(r)); }
   catch(e){ toast("通信エラー"); }
+}
+// ===== 西濃 配達可否の確認FAX（2026-10-02 自動送信をやめ、法人名確定後にここから内容を確認して送る） =====
+// 対象＝西濃・3m以上・法人。GASは条件に当たると info@ へ「送信待ち」メールを出し、そのリンク(#seinofax=注文id)でこの画面が開く
+function seinoUrbanFaxTarget(o){ return o.mall!=="ichiba" && shipCarrier(o)==="西濃" && itemMaxLen(o)>=2730 && (o.custType==="法人"||!!String(o.corpName||"").trim()); }
+function seinoUrbanFaxBoxHTML(o){
+  if(!seinoUrbanFaxTarget(o) || o.seinoOkurijoNo) return "";
+  const at=String(o.seinoUrbanFaxAt||""), sent=/^\d{4}/.test(at);
+  const box=inner=>`<div style="border:1.5px solid #1565c044;background:#1565c00d;border-radius:8px;padding:8px 10px;margin-bottom:8px"><div style="font-size:11.5px;font-weight:800;margin-bottom:4px">📠 西濃へ配達可否の確認FAX（3m以上・法人宛て）</div>${inner}</div>`;
+  if(sent) return box(`<div style="font-size:12.5px"><b>✅ 送信済</b> ${esc(at.slice(5,16).replace("-","/"))}（返事が来るまで送り状を出さない）</div>
+    <button class="btn ghost sm" style="margin-top:6px" onclick="seinoUrbanFaxOpen('${esc(o.id)}',true)">もう一度送る（内容を確認）</button>`);
+  if(at) return box(`<div style="font-size:12.5px">✅ ${esc(at)}＝確認不要</div>
+    <button class="btn ghost sm" style="margin-top:6px" onclick="seinoUrbanFaxOpen('${esc(o.id)}')">それでも確認FAXを送る</button>`);
+  if(!String(o.corpName||"").trim()) return box(`<div style="font-size:12.5px;color:#c0392b;font-weight:700">法人名が未確定です。上の「法人の届け先」に法人名を入れて保存すると送れます。</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:3px">個人名のまま送ると西濃から「法人ですか」と確認の電話が来るため、法人名が決まってから送ります。</div>`);
+  return box(`<button class="btn primary" style="width:100%" onclick="seinoUrbanFaxOpen('${esc(o.id)}')">📠 内容を確認してFAX送信（袋井支店）</button>
+    <div style="font-size:11px;color:var(--muted);margin-top:5px">${o.seinoUrbanAskAt?"確認メール送信済 "+esc(String(o.seinoUrbanAskAt).slice(5,16).replace("-","/"))+"・":""}押すと原稿が表示されます。まだ送信されません。</div>`);
+}
+async function apiPostJson(body){
+  const r=await fetch(API_URL, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify(Object.assign({email:CRED.email, pass:CRED.pass}, body))});
+  return r.json();
+}
+function seinoUrbanFaxClose(){ const m=document.getElementById("sufax-modal"); if(m) m.remove(); }
+async function seinoUrbanFaxOpen(id, resend){
+  const o=getOrder(id); if(!o) return;
+  const cn=document.getElementById("seino-corp-name");
+  if(cn && cn.value.trim()!==String(o.corpName||"").trim()){ alert("法人名が保存されていません。\n先に下の「保存」を押してから、もう一度この注文を開いてください。"); return; }
+  toast("FAX原稿を作成中…");
+  let j;
+  try{ j=await apiPostJson({action:"seinourbanfax", id:id, mode:"preview"}); }catch(e){ toast("通信エラー（原稿を取得できませんでした）"); return; }
+  if(!j||!j.ok){ alert(j&&j.error==="corpNameRequired"?"法人名が未確定です。法人名を入れて保存してから送ってください。":"原稿を取得できませんでした: "+((j&&j.error)||"")); return; }
+  seinoUrbanFaxClose();
+  const m=document.createElement("div"); m.id="sufax-modal";
+  m.style.cssText="position:fixed;inset:0;z-index:95;background:rgba(20,16,10,.55);display:flex;align-items:center;justify-content:center;padding:14px";
+  m.innerHTML=`<div style="background:#fff;color:#222;border-radius:12px;width:min(820px,100%);max-height:96vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.35)">
+    <div style="padding:12px 16px;font-weight:800;font-size:15px;border-bottom:1px solid #ddd">📠 西濃運輸 袋井支店（FAX ${esc(j.to||"")}）へ送る原稿${j.sentAt?`<span style="color:#c0392b;font-size:12.5px">　※ ${esc(j.sentAt.slice(5,16).replace("-","/"))} に送信済み（再送になります）</span>`:""}</div>
+    <iframe id="sufax-frame" style="flex:1;min-height:62vh;border:0;background:#fff"></iframe>
+    <div style="padding:10px 16px;border-top:1px solid #ddd;display:flex;gap:8px;align-items:center">
+      <span style="font-size:11.5px;color:#666;flex:1">送信するとFAXデスクの送信履歴に残ります。返事が来るまで送り状は出さないでください。</span>
+      <button class="btn ghost" onclick="seinoUrbanFaxClose()">キャンセル</button>
+      <button class="btn primary" id="sufax-send">📠 この内容でFAX送信</button>
+    </div></div>`;
+  document.body.appendChild(m);
+  document.getElementById("sufax-frame").srcdoc=j.html;
+  document.getElementById("sufax-send").onclick=async function(){
+    const btn=this; btn.disabled=true; btn.textContent="送信中…";
+    let r;
+    try{ r=await apiPostJson({action:"seinourbanfax", id:id, mode:"send", force:(resend||j.sentAt)?1:0}); }
+    catch(e){ btn.disabled=false; btn.textContent="📠 この内容でFAX送信"; alert("通信エラーで結果を確認できませんでした。\n二重送信を避けるため、数分おいて画面を更新し「送信済」になっていないか確認してから、もう一度送ってください。"); return; }
+    if(r&&r.ok){ o.seinoUrbanFaxAt=r.at; if(r.memo!==undefined) o.memo=r.memo; const sv=(SERVER.orders||[]).find(x=>x.id===o.id); if(sv){ sv.seinoUrbanFaxAt=r.at; if(r.memo!==undefined) sv.memo=r.memo; }
+      seinoUrbanFaxClose(); toast("📠 西濃袋井支店へFAXを送信しました"); window._drawerSnap=null; openOrderDrawer(id); return; }
+    if(r&&r.error==="alreadySent"){ seinoUrbanFaxClose(); alert("すでに送信済みです（"+(r.at||"")+"）。2通目は送っていません。"); loadFromServer(); return; }
+    btn.disabled=false; btn.textContent="📠 この内容でFAX送信";
+    alert("FAXを送信できませんでした: "+((r&&r.error)||"不明なエラー")+"\n\n急ぐ場合は袋井支店（0538-42-1138）へ電話で確認してください。");
+  };
+}
+// 確認メールのリンク(#seinofax=注文id)から来たら、その注文を開いて原稿を出す（初回のデータ取得後に1回だけ）
+function seinoUrbanFaxFromHash(){
+  const mm=String(location.hash||"").match(/[#&]seinofax=([^&]+)/); if(!mm) return;
+  const id=decodeURIComponent(mm[1]); const o=getOrder(id);
+  try{ history.replaceState(null,"",location.pathname+location.search); }catch(e){}
+  if(!o){ toast("この注文が見つかりません（完了済みか、取込前の可能性）"); return; }
+  openOrderDrawer(id); seinoUrbanFaxOpen(id);
 }
 async function seinoPdfView(no){
   toast("送り状PDFを取得中…");
