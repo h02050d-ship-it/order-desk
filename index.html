@@ -952,7 +952,7 @@ async function autoKakouSync(){
   _kakouBusy=true;
   try{
     // 注文が入った段階で登録（加工OK前でも）。未確認は実際列に「支払確認/配送確認」表示、加工OKで「-」
-    const active=state.orders.filter(o=>!isTestOrder(o) && o.mall!=="ichiba" && o.mall!=="yahoo" && (o.status==="new"||o.status==="preparing") && !o.tracking && kakouRowsFor(o).length); // テスト・送り状あり(加工済)・市場(人間チェック必須)・ヤフー(2026-09-29 自動入力オフ)は除外
+    const active=state.orders.filter(o=>!isTestOrder(o) && o.mall!=="ichiba" && o.mall!=="yahoo" && (o.status==="new"||o.status==="preparing") && (!o.tracking||o.kakouAdded) && kakouRowsFor(o).length); // テスト・送り状あり(未登録＝加工済扱いで新規登録しない／既登録は実際列だけ追従 2026-10-19)・市場(人間チェック必須)・ヤフー(2026-09-29 自動入力オフ)は除外
     const inserts=active.filter(o=>!o.kakouAdded);
     for(const o of inserts){
       const r=await kakouWrite_(o);
