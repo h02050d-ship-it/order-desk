@@ -1181,7 +1181,7 @@ function ichibaShortName(name){
   t=t.replace(/十亻入|十亻又|ナイス/g,"ナイス").replace(/Aishin\s*Hikari|アイシンヒカリ/gi,"ひかり").replace(/HIKARI|Hikari|hikari|ヒカリ/g,"ひかり");  // OCRゆれ吸収・ひかり表記に統一
   const brand=(t.match(/丸宇|ナイス|ニッチ|吉貞|勝山|中央木材|ミトモク|千葉木材|ひかり|アイザワ|糸永|金平|オオツカ|滝川|カネ信|内藤運輸/)||[])[0]||"";
   if(!brand) return t.replace(/木材|市場|営業所|支店|木材店/g,"").slice(0,10);
-  let rest=t.replace(brand,"").replace(/木材|市場|営業所|支店|木材店|センター/g,"").trim();  // 拠点名だけ残す
+  let rest=t.replace(brand,"").replace(/木材|市売|市場|営業所|支店|木材店|センター/g,"").trim();  // 市売: 丸宇木材市売京葉市場→丸宇京葉 (GAS _ichibaShort_ と同一 2026-11-12)  // 拠点名だけ残す
   return (brand+rest).slice(0,10);
 }
 function _kakouBlankRow_(o){
