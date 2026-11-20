@@ -616,6 +616,20 @@ function cleanItem(name){ // プレーンテキスト（tooltip等）
   const parts=[head,p.dim,p.qty,p.fushi].filter(Boolean);
   return parts.length>=2 ? parts.join(" ") : p.raw;
 }
+// お客様向け文面の商品名（2026-11-20）: 「フローリング（突付）」「羽目板（目透し）」・幅は「120（働き108）」を併記（mail_prep/rk_confirm.py と同じ）
+const HATARAKI_={"フローリング":{108:120,93:105},"羽目板":{103:120},"スノコ":{113:120,98:105}};
+const YOBI_={"フローリング":{120:108,105:93},"羽目板":{120:103},"スノコ":{120:113,105:98}};
+function custItemName(name){
+  const p=parseItem(name); const key=/^スノコ/.test(p.type)?"スノコ":p.type;
+  const nm=p.wood+p.type+(p.type==="フローリング"?"（突付）":p.type==="羽目板"?"（目透し）":"");
+  let dim=p.dim;
+  if(dim){ const [t,w0,L]=dim.split("×"); const w=Number(w0);
+    if((HATARAKI_[key]||{})[w]) dim=t+"×"+HATARAKI_[key][w]+"（働き"+w+"）×"+L;
+    else if((YOBI_[key]||{})[w]) dim=t+"×"+w+"（働き"+YOBI_[key][w]+"）×"+L; }
+  const head=((p.grade&&p.grade!=="A"?p.grade+"級 ":"")+nm).trim();
+  const parts=[head,dim,p.qty,p.fushi].filter(Boolean);
+  return parts.length>=2 ? parts.join(" ") : p.raw;
+}
 // 色付きHTML。qty>1なら ×n を付与。樹種種類は控えめ、寸法は太字、節は色分け、B/C級は赤で強調
 function itemHTML(name, qty){
   const p=parseItem(name);
@@ -1387,7 +1401,7 @@ async function genConfirmMail(){
   }
   // f はあり: total があれば記入、無ければ（北海道/沖縄/離島＝別途見積り）空欄で生成し手入力を促す
   const total=(f&&f.total)?f.total:"";
-  const itemsTxt=(o.items||[]).map(it=>"・"+cleanItem(it.name)+(it.opt?"（"+String(it.opt).replace(/\s*\/\s*/g,"・")+"）":"")+" ×"+it.qty).join("\n");  // オプション(カット/塗装/厚さ等)も記載
+  const itemsTxt=(o.items||[]).map(it=>"・"+custItemName(it.name)+(it.opt?"（"+String(it.opt).replace(/\s*\/\s*/g,"・")+"）":"")+" ×"+it.qty).join("\n");  // オプション(カット/塗装/厚さ等)も記載
   let body="";
   if(!o.custType) toast("⚠️ 個人/法人が未選択の注文です。法人向け(1〜5確認)の文面を出しています。個人様なら支店止めの文面に直してください");
   if(o.custType==="個人"){
