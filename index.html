@@ -1404,13 +1404,16 @@ async function genConfirmMail(){
   const total=(f&&f.total)?f.total:"";
   const itemsTxt=(o.items||[]).map(it=>"・"+custItemName(it.name)+(it.opt?"（"+String(it.opt).replace(/\s*\/\s*/g,"・")+"）":"")+" ×"+it.qty).join("\n");  // オプション(カット/塗装/厚さ等)も記載
   let body="";
+  // お届け日の指定があれば「それより前でも良いか」を聞く（rk_confirm.py と同じ文面・兄弟）
+  const dd=(()=>{const m=String(o.deliveryDate||"").match(/^(\d{4})-(\d{2})-(\d{2})/); if(!m) return ""; const d=new Date(+m[1],+m[2]-1,+m[3]); return (+m[2])+"月"+(+m[3])+"日("+"日月火水木金土"[d.getDay()]+")";})();
+  const ddNote="のご指定をいただいております。\nそれより前のお届けでも問題ない場合は、その旨ご記載ください。";
   if(!o.custType) toast("⚠️ 個人/法人が未選択の注文です。法人向け(1〜5確認)の文面を出しています。個人様なら支店止めの文面に直してください");
   if(o.custType==="個人"){
     const br=String((f&&f.officeName)||o.branch||"").replace(/営業所$|支店$/,"");
     let offAddr=(f&&f.officeAddr)||"";
     if(!offAddr && br) offAddr=await seinoBranchAddr(br);   // 営業所検索が間に合わない時はマスタから補完（住所欄の空送信を防ぐ）
     if(!offAddr && br) toast("⚠️ "+br+"支店の住所を取得できませんでした。文面の住所欄を手入力してください");
-    body="（株）林材木店と申します。\nこの度はご注文ありがとうございます。\n\n配送についてご確認したい点がございます。\n\n配送方法で西濃運輸個人様利用（宅配不可支店止め）をお選びいただいております。\n配送先の支店は西濃運輸　"+br+"支店を予定しております。\n住所："+offAddr+"\n送料："+total+"（税込み）\n\n上記の支店と送料で問題ないかご返信をお願い致します。\n送料と支店に問題がなければ、下記注文内容で生産発送をさせていただきます。\nお手数ですが、ご返信宜しくお願い致します。\n\n【ご注文内容】\n"+itemsTxt;
+    body="（株）林材木店と申します。\nこの度はご注文ありがとうございます。\n\n配送についてご確認したい点がございます。\n\n配送方法で西濃運輸個人様利用（宅配不可支店止め）をお選びいただいております。\n配送先の支店は西濃運輸　"+br+"支店を予定しております。\n住所："+offAddr+"\n送料："+total+"（税込み）\n\n"+(dd?("お届け日："+dd+ddNote+"\n\n"):"")+"上記の支店と送料で問題ないかご返信をお願い致します。\n送料と支店に問題がなければ、下記注文内容で生産発送をさせていただきます。\nお手数ですが、ご返信宜しくお願い致します。\n\n【ご注文内容】\n"+itemsTxt;
   } else {
     // 法人名は 確認済みcorpName → 届け先住所 → 注文者名 の順に拾う。
     // 楽天/ヤフーの法人注文は注文者名そのものが社名（例「株式会社 N-BASE」）のことが多く、
@@ -1419,7 +1422,7 @@ async function genConfirmMail(){
     // 3番の住所：社名が住所文字列に含まれていなければ社名を頭に付けて出す（お客様は確認するだけで済む）
     const addrLine=o.shipAddr?("〒"+(o.shipZip||"")+" "+String(o.shipAddr||"")):"";
     const addrBlock=addrLine?((corp&&String(o.shipAddr||"").indexOf(corp)<0)?(corp+"\n"+addrLine):addrLine):"";
-    body="（株）林材木店と申します。\nこの度はご注文ありがとうございます。\n\n配送についてご確認したい点がございます。\n下記の内容をご確認の上、1～5の回答をご返信ください。\n\n\n１.送料："+total+"(税込)\n\n２.配送先の屋号、会社名\n"+corp+"\n\n３.配送先（屋号、会社名の記載がある住所）\n"+addrBlock+"\n\n４.(2階以上の場合)1階引渡しになります\n\n５.(配送先が現場の場合)送料+別途料金が発生します。\n現場卸しの場合はご連絡お願い致します。\n\n\n確認ができ次第、下記注文内容で生産発送をさせていただきます。\nお手数ですが、ご返信宜しくお願い致します。\n\n【ご注文内容】\n"+itemsTxt;
+    body="（株）林材木店と申します。\nこの度はご注文ありがとうございます。\n\n配送についてご確認したい点がございます。\n下記の内容をご確認の上、1～"+(dd?"6":"5")+"の回答をご返信ください。\n\n\n１.送料："+total+"(税込)\n\n２.配送先の屋号、会社名\n"+corp+"\n\n３.配送先（屋号、会社名の記載がある住所）\n"+addrBlock+"\n\n４.(2階以上の場合)1階引渡しになります\n\n５.(配送先が現場の場合)送料+別途料金が発生します。\n現場卸しの場合はご連絡お願い致します。\n\n"+(dd?("６.お届け日\n"+dd+ddNote+"\n\n"):"")+"\n確認ができ次第、下記注文内容で生産発送をさせていただきます。\nお手数ですが、ご返信宜しくお願い致します。\n\n【ご注文内容】\n"+itemsTxt;
   }
   const box=document.getElementById("mail-preview");
   if(box){ box.value=wrapConfirmMail(o, body); box.style.display="block"; box.style.height="420px"; }
